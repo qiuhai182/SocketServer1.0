@@ -49,6 +49,10 @@ Poller::~Poller()
     close(pollFd_);
 }
 
+/*
+ * 
+ * 
+ */
 void Poller::poll(ChannelList &activeChannelList)
 {
     int timeout = TIMEOUT;
@@ -89,6 +93,10 @@ void Poller::poll(ChannelList &activeChannelList)
     // eventList_.clear();
 }
 
+/*
+ * 
+ * 
+ */
 void Poller::AddChannel(Channel *pchannel)
 {
     struct epoll_event ev;
@@ -107,6 +115,10 @@ void Poller::AddChannel(Channel *pchannel)
     }
 }
 
+/*
+ * 
+ * 
+ */
 void Poller::RemoveChannel(Channel *pchannel)
 {
     int fd = pchannel->GetFd();
@@ -125,6 +137,10 @@ void Poller::RemoveChannel(Channel *pchannel)
     }
 }
 
+/*
+ * 
+ * 
+ */
 void Poller::UpdateChannel(Channel *pchannel)
 {
     int fd = pchannel->GetFd();

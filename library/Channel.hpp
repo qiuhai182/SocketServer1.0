@@ -1,5 +1,5 @@
 
-// Channel类，fd和事件的封装
+// Channel类，承载一个事件的套接字描述符fd和事件events，与epoll_event直接交互
 //  EPOLLIN ：表示对应的文件描述符可以读（包括对端SOCKET正常关闭）；
 //  EPOLLOUT：表示对应的文件描述符可以写；
 //  EPOLLPRI：表示对应的文件描述符有紧急的数据可读（这里应该表示有带外数据到来）；
@@ -74,6 +74,10 @@ Channel::~Channel()
 {
 }
 
+/*
+ * 
+ * 
+ */
 void Channel::HandleEvent()
 {
     if (events_ & EPOLLRDHUP) // 客户端异常关闭事件

@@ -64,9 +64,9 @@ public:
     {
         connectioncleanup_ = cb;
     }
-    // 设置异步处理标志
     void SetAsyncProcessing(const bool asyncProcessing)
     {
+        // 异步处理
         asyncProcessing_ = asyncProcessing;
     }
 
@@ -117,6 +117,10 @@ TcpConnection::~TcpConnection()
     close(fd_);
 }
 
+/*
+ * 
+ * 
+ */
 void TcpConnection::AddChannelToLoop()
 {
     // bug segement fault
@@ -127,6 +131,10 @@ void TcpConnection::AddChannelToLoop()
     loop_->AddTask(std::bind(&EventLoop::AddChannelToPoller, loop_, spChannel_.get()));
 }
 
+/*
+ * 
+ * 
+ */
 void TcpConnection::Send(const std::string &s)
 {
     bufferOut_ += s; // 跨线程消息投递成功
@@ -143,6 +151,10 @@ void TcpConnection::Send(const std::string &s)
     }
 }
 
+/*
+ * 
+ * 
+ */
 void TcpConnection::SendInLoop()
 {
     // bufferOut_ += s;// copy一次
@@ -180,6 +192,10 @@ void TcpConnection::SendInLoop()
     }
 }
 
+/*
+ * 
+ * 
+ */
 void TcpConnection::Shutdown()
 {
     if (loop_->GetThreadId() == std::this_thread::get_id())
@@ -193,6 +209,10 @@ void TcpConnection::Shutdown()
     }
 }
 
+/*
+ * 
+ * 
+ */
 void TcpConnection::ShutdownInLoop()
 {
     if (disConnected_)
@@ -200,16 +220,19 @@ void TcpConnection::ShutdownInLoop()
         return;
     }
     std::cout << "shutdown" << std::endl;
-    closecallback_(shared_from_this());                                // 应用层清理连接回调
-    loop_->AddTask(std::bind(connectioncleanup_, shared_from_this())); // 自己不能清理自己，交给loop执行，Tcpserver清理TcpConnection
+    closecallback_(shared_from_this());
+    loop_->AddTask(std::bind(connectioncleanup_, shared_from_this()));
     disConnected_ = true;
 }
 
+/*
+ * 
+ * 
+ */
 void TcpConnection::HandleRead()
 {
     // 接收数据，写入缓冲区
     int result = recvn(fd_, bufferIn_);
-
     // 业务回调,可以利用工作线程池处理，投递任务
     if (result > 0)
     {
@@ -225,6 +248,10 @@ void TcpConnection::HandleRead()
     }
 }
 
+/*
+ * 
+ * 
+ */
 void TcpConnection::HandleWrite()
 {
     int result = sendn(fd_, bufferOut_);
@@ -257,6 +284,10 @@ void TcpConnection::HandleWrite()
     }
 }
 
+/*
+ * 
+ * 
+ */
 void TcpConnection::HandleError()
 {
     if (disConnected_)
@@ -271,7 +302,10 @@ void TcpConnection::HandleError()
     disConnected_ = true;
 }
 
-// 对端关闭连接,有两种，一种close，另一种是shutdown(半关闭)，但服务器并不清楚是哪一种，只能按照最保险的方式来，即发完数据再close
+/*
+ * 对端关闭连接,有两种，一种close，另一种是shutdown(半关闭)，但服务器并不清楚是哪一种，只能按照最保险的方式来，即发完数据再close
+ * 
+ */
 void TcpConnection::HandleClose()
 {
     // 移除事件
@@ -304,6 +338,10 @@ void TcpConnection::HandleClose()
     }
 }
 
+/*
+ * 
+ * 
+ */
 int recvn(int fd, std::string &bufferin)
 {
     int nbyte = 0;
@@ -350,6 +388,10 @@ int recvn(int fd, std::string &bufferin)
     }
 }
 
+/*
+ * 
+ * 
+ */
 int sendn(int fd, std::string &bufferout)
 {
     ssize_t nbyte = 0;

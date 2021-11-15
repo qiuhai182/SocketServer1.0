@@ -20,19 +20,12 @@ class TimerManager
 {
 public:
     typedef std::function<void()> CallBack;
-    // 单例模式
     static TimerManager *GetTimerManagerInstance();
-    // 添加定时任务
     void AddTimer(Timer *ptimer);
-    // 删除定时任务
     void RemoveTimer(Timer *ptimer);
-    // 调整定时任务
     void AdjustTimer(Timer *ptimer);
-    // 开启线程，定时器启动
     void Start();
-    // 暂停定时器
     void Stop();
-    // 垃圾回收，程序结束的时候析构TimerManager
     class GC
     {
     public:
@@ -44,39 +37,24 @@ public:
     };
 
 private:
-    // 私有构造函数，单例模式
     TimerManager();
     ~TimerManager();
     static TimerManager *timerManager_;
     static std::mutex mutex_;
     static GC gc;
-    // 时间轮结构
     std::vector<Timer *> timeWheel;
-    // 时间轮互斥量
     std::mutex timeWheelMutex_;
-    // 时间轮运行状态
     bool running_;
-    // 时间轮当前slot
     int currentSlot;
-    // 每个slot的时间间隔,ms
     static const int slotInterval;
-    // slot总数
     static const int slotNum;
-    // 定时器线程
     std::thread th_;
-    // 时间轮检查超时任务
     void CheckTimer();
-    // 线程实际执行的函数
     void CheckTick();
-    // 计算定时器参数
     void CalculateTimer(Timer *ptimer);
-    // 添加定时器到时间轮中
     void AddTimerToTimeWheel(Timer *ptimer);
-    // 从时间轮中移除定时器
     void RemoveTimerFromTimeWheel(Timer *ptimer);
-    // 从时间轮中修改定时器
     void AdjustTimerToWheel(Timer *ptimer);
-
 };
 
 // 全局初始化
@@ -99,13 +77,16 @@ TimerManager::~TimerManager()
     Stop();
 }
 
+/*
+ * 
+ * 
+ */
 TimerManager *TimerManager::GetTimerManagerInstance()
 {
-    if (timerManager_ == nullptr) // 指针为空，则创建管理器
+    if (timerManager_ == nullptr)
     {
-        // 单例模式锁，线程安全
         std::lock_guard<std::mutex> lock(mutex_);
-        if (timerManager_ == nullptr) // 双重检测，线程安全
+        if (timerManager_ == nullptr)
         {
             timerManager_ = new TimerManager();
         }
@@ -113,6 +94,10 @@ TimerManager *TimerManager::GetTimerManagerInstance()
     return timerManager_;
 }
 
+/*
+ * 
+ * 
+ */
 void TimerManager::AddTimer(Timer *ptimer)
 {
     if (ptimer == nullptr)
@@ -122,6 +107,10 @@ void TimerManager::AddTimer(Timer *ptimer)
     AddTimerToTimeWheel(ptimer);
 }
 
+/*
+ * 
+ * 
+ */
 void TimerManager::RemoveTimer(Timer *ptimer)
 {
     if (ptimer == nullptr)
@@ -130,6 +119,10 @@ void TimerManager::RemoveTimer(Timer *ptimer)
     RemoveTimerFromTimeWheel(ptimer);
 }
 
+/*
+ * 
+ * 
+ */
 void TimerManager::AdjustTimer(Timer *ptimer)
 {
     if (ptimer == nullptr)
@@ -139,16 +132,19 @@ void TimerManager::AdjustTimer(Timer *ptimer)
     AdjustTimerToWheel(ptimer);
 }
 
+/*
+ * 计算定时器参数
+ * 
+ */
 void TimerManager::CalculateTimer(Timer *ptimer)
 {
     if (ptimer == nullptr)
         return;
-
     int tick = 0;
     int timeout = ptimer->timeOut_;
     if (timeout < slotInterval)
     {
-        tick = 1; // 不足一个slot间隔，按延迟1slot计算
+        tick = 1;
     }
     else
     {
@@ -159,13 +155,15 @@ void TimerManager::CalculateTimer(Timer *ptimer)
     ptimer->timeSlot = timeslot;
 }
 
+/*
+ * 
+ * 
+ */
 void TimerManager::AddTimerToTimeWheel(Timer *ptimer)
 {
     if (ptimer == nullptr)
         return;
-
     int timeslot = ptimer->timeSlot;
-
     if (timeWheel[timeslot])
     {
         ptimer->next = timeWheel[timeslot];
@@ -178,13 +176,15 @@ void TimerManager::AddTimerToTimeWheel(Timer *ptimer)
     }
 }
 
+/*
+ * 
+ * 
+ */
 void TimerManager::RemoveTimerFromTimeWheel(Timer *ptimer)
 {
     if (ptimer == nullptr)
         return;
-
     int timeslot = ptimer->timeSlot;
-
     if (ptimer == timeWheel[timeslot])
     {
         // 头结点
@@ -202,11 +202,14 @@ void TimerManager::RemoveTimerFromTimeWheel(Timer *ptimer)
         ptimer->prev->next = ptimer->next;
         if (ptimer->next != nullptr)
             ptimer->next->prev = ptimer->prev;
-
         ptimer->prev = ptimer->next = nullptr;
     }
 }
 
+/*
+ * 
+ * 
+ */
 void TimerManager::AdjustTimerToWheel(Timer *ptimer)
 {
     if (ptimer == nullptr)
@@ -217,6 +220,10 @@ void TimerManager::AdjustTimerToWheel(Timer *ptimer)
     AddTimerToTimeWheel(ptimer);
 }
 
+/*
+ * 时间轮检查超时任务
+ * 
+ */
 void TimerManager::CheckTimer() // 执行当前slot的任务
 {
     std::lock_guard<std::mutex> lock(timeWheelMutex_);
@@ -254,6 +261,10 @@ void TimerManager::CheckTimer() // 执行当前slot的任务
     currentSlot = (++currentSlot) % TimerManager::slotNum; // 移动至下一个时间槽
 }
 
+/*
+ * 线程实际执行的函数
+ * 
+ */
 void TimerManager::CheckTick()
 {
     //  steady_clock::time_point t1 = steady_clock::now();
@@ -263,6 +274,7 @@ void TimerManager::CheckTick()
     struct timeval tv;
     gettimeofday(&tv, NULL);
     int oldtime = (tv.tv_sec % 10000) * 1000 + tv.tv_usec / 1000;
+    std::cout << "oldtime: " << oldtime << ", sec: " << tv.tv_sec << ", usec: " << tv.tv_usec << std::endl;
     int time;
     int tickcount;
     while (running_)
@@ -272,7 +284,6 @@ void TimerManager::CheckTick()
         tickcount = (time - oldtime) / slotInterval; // 计算两次check的时间间隔占多少个slot
         // oldtime = time;
         oldtime = oldtime + tickcount * slotInterval;
-
         for (int i = 0; i < tickcount; ++i)
         {
             TimerManager::GetTimerManagerInstance()->CheckTimer();
@@ -285,12 +296,20 @@ void TimerManager::CheckTick()
     }
 }
 
+/*
+ * 
+ * 
+ */
 void TimerManager::Start()
 {
     running_ = true;
     th_ = std::thread(&TimerManager::CheckTick, this);
 }
 
+/*
+ * 
+ * 
+ */
 void TimerManager::Stop()
 {
     running_ = false;

@@ -49,33 +49,34 @@
 #include <iostream>
 #include <stdio.h>
 #include <string.h>
-//#include "TcpConnection.h"
 
-typedef struct _HttpRequestContext {
-	std::string method;
-	std::string url;
-	std::string version;
-	std::map<std::string, std::string> header;
-	std::string body;
-}HttpRequestContext;
+typedef struct _HttpRequestContext
+{
+    std::string method;
+    std::string url;
+    std::string version;
+    std::map<std::string, std::string> header;
+    std::string body;
+} HttpRequestContext;
 
-typedef struct _HttpResponseContext {
+typedef struct _HttpResponseContext
+{
     std::string version;
     std::string statecode;
     std::string statemsg;
-	std::map<std::string, std::string> header;
-	std::string body;
-}HttpResponseContext;
+    std::map<std::string, std::string> header;
+    std::string body;
+} HttpResponseContext;
 
 class HttpSession
 {
 private:
     //解析报文相关成员
     HttpRequestContext httprequestcontext_;
-    bool praseresult_;
+    bool parseresult_;
     //Http响应报文相关成员
     std::string responsecontext_;
-    std::string responsebody_;    
+    std::string responsebody_;
     std::string errormsg;
     std::string path_;
     std::string querystring_;
@@ -84,23 +85,19 @@ private:
     std::string body_buff;
 
 public:
-    //HttpSession(TcpConnection *ptcpconn);
     HttpSession();
     ~HttpSession();
-    //解析HTTP报文
-    bool PraseHttpRequest(std::string &s, HttpRequestContext &httprequestcontext); 
-    //处理报文
-    void HttpProcess(const HttpRequestContext &httprequestcontext, std::string &responsecontext); 
-    //错误消息报文组装，404等
+    bool ParseHttpRequest(std::string &s, HttpRequestContext &httprequestcontext);
+    void HttpProcess(const HttpRequestContext &httprequestcontext, std::string &responsecontext);
     void HttpError(const int err_num, const std::string short_msg, const HttpRequestContext &httprequestcontext, std::string &responsecontext);
-    //判断长连接
-    bool KeepAlive() 
-    { return keepalive_;}
-    
+    bool KeepAlive()
+    {
+        return keepalive_;
+    }
 };
 
 HttpSession::HttpSession()
-    : praseresult_(false),
+    : parseresult_(false),
       keepalive_(true)
 {
 }
@@ -109,16 +106,17 @@ HttpSession::~HttpSession()
 {
 }
 
-bool HttpSession::PraseHttpRequest(std::string &msg, HttpRequestContext &httprequestcontext)
+/*
+ * 
+ * 
+ */
+bool HttpSession::ParseHttpRequest(std::string &msg, HttpRequestContext &httprequestcontext)
 {
-    //std::cout << "HttpServer::HttpParser" << std::endl;
     std::string crlf("\r\n"), crlfcrlf("\r\n\r\n");
     size_t prev = 0, next = 0, pos_colon;
     std::string key, value;
-
-    bool praseresult = false;
+    bool parseresult = false;
     //以下解析可以改成状态机，解决一次收Http报文不完整问题
-    //prase http request line
     if ((next = msg.find(crlf, prev)) != std::string::npos)
     {
         std::string first_line(msg.substr(prev, next - prev));
@@ -131,13 +129,12 @@ bool HttpSession::PraseHttpRequest(std::string &msg, HttpRequestContext &httpreq
     else
     {
         std::cout << "msg" << msg << std::endl;
-        std::cout << "Error in httpPraser: http_request_line isn't complete!" << std::endl;
-        praseresult = false;
+        std::cout << "Error in httpParser: http_request_line isn't complete!" << std::endl;
+        parseresult = false;
         msg.clear();
-        return praseresult;
+        return parseresult;
         //可以临时存起来，凑齐了再解析
     }
-    //prase http request header
     size_t pos_crlfcrlf = 0;
     if ((pos_crlfcrlf = msg.find(crlfcrlf, prev)) != std::string::npos)
     {
@@ -153,18 +150,22 @@ bool HttpSession::PraseHttpRequest(std::string &msg, HttpRequestContext &httpreq
     }
     else
     {
-        std::cout << "Error in httpPraser: http_request_header isn't complete!" << std::endl;
-        praseresult = false;
+        std::cout << "Error in httpParser: http_request_header isn't complete!" << std::endl;
+        parseresult = false;
         msg.clear();
-        return praseresult;
+        return parseresult;
     }
-    //prase http request body
+    //parse http request body
     httprequestcontext.body = msg.substr(pos_crlfcrlf + 4);
-    praseresult = true;
+    parseresult = true;
     msg.clear();
-    return praseresult;
+    return parseresult;
 }
 
+/*
+ * 
+ * 
+ */
 void HttpSession::HttpProcess(const HttpRequestContext &httprequestcontext, std::string &responsecontext)
 {
     //std::cout << "HttpServer::HttpProcess" << std::endl;
@@ -172,7 +173,6 @@ void HttpSession::HttpProcess(const HttpRequestContext &httprequestcontext, std:
     std::string errormsg;
     std::string path;
     std::string querystring;
-
     if ("GET" == httprequestcontext.method)
     {
         ;
@@ -188,7 +188,6 @@ void HttpSession::HttpProcess(const HttpRequestContext &httprequestcontext, std:
         HttpError(501, "Method Not Implemented", httprequestcontext, responsecontext);
         return;
     }
-
     size_t pos = httprequestcontext.url.find("?");
     if (pos != std::string::npos)
     {
@@ -199,7 +198,6 @@ void HttpSession::HttpProcess(const HttpRequestContext &httprequestcontext, std:
     {
         path = httprequestcontext.url;
     }
-
     //keepalive判断处理
     std::map<std::string, std::string>::const_iterator iter = httprequestcontext.header.find("Connection");
     if (iter != httprequestcontext.header.end())
@@ -217,7 +215,6 @@ void HttpSession::HttpProcess(const HttpRequestContext &httprequestcontext, std:
             keepalive_ = false; //HTTP/1.0默认短连接
         }
     }
-
     if ("/" == path)
     {
         path = "/index.html";
@@ -239,11 +236,6 @@ void HttpSession::HttpProcess(const HttpRequestContext &httprequestcontext, std:
         responsecontext += responsebody;
         return;
     }
-    else
-    {
-        ;
-    }
-
     //std::string responsebody;
     path.insert(0, ".");
     FILE *fp = NULL;
@@ -273,7 +265,6 @@ void HttpSession::HttpProcess(const HttpRequestContext &httprequestcontext, std:
         }
         fclose(fp);
     }
-
     std::string filetype("text/html"); //暂时固定为html
     responsecontext += httprequestcontext.version + " 200 OK\r\n";
     responsecontext += "Server: Chen Shuaihao's NetServer/0.1\r\n";
@@ -287,6 +278,10 @@ void HttpSession::HttpProcess(const HttpRequestContext &httprequestcontext, std:
     responsecontext += responsebody;
 }
 
+/*
+ * 
+ * 
+ */
 void HttpSession::HttpError(const int err_num, const std::string short_msg, const HttpRequestContext &httprequestcontext, std::string &responsecontext)
 {
     //这里string创建销毁应该会耗时间

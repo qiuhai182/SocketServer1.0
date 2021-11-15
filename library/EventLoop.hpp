@@ -1,5 +1,5 @@
 
-// IO复用流程的抽象，等待事件，处理事件，执行其他任务
+// 事件处理主逻辑，IO复用流程的抽象，等待、处理事件
 
 #pragma once
 
@@ -43,9 +43,6 @@ public:
     {
         return tid_;
     }
-    void WakeUp();
-    void HandleRead();
-    void HandleError();
     void AddTask(Functor functor)
     {
         {
@@ -54,25 +51,10 @@ public:
         }
         WakeUp(); // 跨线程唤醒，worker线程唤醒IO线程
     }
-    void ExecuteTask()
-    {
-        //  std::lock_guard <std::mutex> lock(mutex_);
-        //  for(Functor &functor : functorList_)
-        //  {
-        //      functor();// 在加锁后执行任务，调用sendinloop，再调用close，执行添加任务，这样functorList_就会修改
-        //  }
-        //  functorList_.clear();
-        std::vector<Functor> functorlists;
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            functorlists.swap(functorList_);
-        }
-        for (Functor &functor : functorlists)
-        {
-            functor();
-        }
-        functorlists.clear();
-    }
+    void WakeUp();
+    void HandleRead();
+    void HandleError();
+    void ExecuteTask();
 
 private:
     std::vector<Functor> functorList_;
@@ -83,10 +65,12 @@ private:
     std::mutex mutex_;
     int wakeUpFd_;
     Channel wakeUpChannel_;
-
 };
 
-// 参照muduo，实现跨线程唤醒
+/*
+ * 参照muduo，实现跨线程唤醒
+ * 
+ */
 int CreateEventFd()
 {
     int evtfd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
@@ -108,11 +92,11 @@ EventLoop::EventLoop()
       wakeUpFd_(CreateEventFd()),
       wakeUpChannel_()
 {
-    wakeUpChannel_.SetFd(wakeUpFd_);
-    wakeUpChannel_.SetEvents(EPOLLIN | EPOLLET);
-    wakeUpChannel_.SetReadHandle(std::bind(&EventLoop::HandleRead, this));
-    wakeUpChannel_.SetErrorHandle(std::bind(&EventLoop::HandleError, this));
-    AddChannelToPoller(&wakeUpChannel_);
+    // wakeUpChannel_.SetFd(wakeUpFd_);
+    // wakeUpChannel_.SetEvents(EPOLLIN | EPOLLET);
+    // wakeUpChannel_.SetReadHandle(std::bind(&EventLoop::HandleRead, this));
+    // wakeUpChannel_.SetErrorHandle(std::bind(&EventLoop::HandleError, this));
+    // AddChannelToPoller(&wakeUpChannel_);
 }
 
 EventLoop::~EventLoop()
@@ -120,22 +104,38 @@ EventLoop::~EventLoop()
     close(wakeUpFd_);
 }
 
+/*
+ * 
+ * 
+ */
 void EventLoop::HandleRead()
 {
     uint64_t one = 1;
     ssize_t n = read(wakeUpFd_, &one, sizeof one);
 }
 
+/*
+ * 
+ * 
+ */
 void EventLoop::HandleError()
 {
 }
 
+/*
+ * 
+ * 
+ */
 void EventLoop::WakeUp()
 {
     uint64_t one = 1;
     ssize_t n = write(wakeUpFd_, (char *)(&one), sizeof one);
 }
 
+/*
+ * 
+ * 
+ */
 void EventLoop::loop()
 {
     quit_ = false;
@@ -148,6 +148,33 @@ void EventLoop::loop()
             pchannel->HandleEvent();
         }
         activeChannelList_.clear();
-        ExecuteTask();
+        if (functorList_.size())
+        {
+            ExecuteTask();
+        }
     }
+}
+
+/*
+ * 
+ * 
+ */
+void EventLoop::ExecuteTask()
+{
+    //  std::lock_guard <std::mutex> lock(mutex_);
+    //  for(Functor &functor : functorList_)
+    //  {
+    //      functor();// 在加锁后执行任务，调用sendinloop，再调用close，执行添加任务，这样functorList_就会修改
+    //  }
+    //  functorList_.clear();
+    std::vector<Functor> functorlists;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        functorlists.swap(functorList_);
+    }
+    for (Functor &functor : functorlists)
+    {
+        functor();
+    }
+    functorlists.clear();
 }

@@ -2,6 +2,7 @@
 #include <signal.h>
 #include "../library/EventLoop.hpp"
 #include "../library/EchoServer.hpp"
+#include "../library/HttpServer.hpp"
 
 EventLoop *lp;
 
@@ -32,24 +33,22 @@ int main(int argc, char *argv[])
         workerthreadnum = atoi(argv[3]);
     }   
 
-    // EventLoop loop;
-    // lp = &loop;
-    // HttpServer httpServer(&loop, port, iothreadnum, workerthreadnum);
-    // httpServer.Start();
-    // try
-    // {
-    //     loop.loop();
-    // }
-    // catch (std::bad_alloc& ba)
-    // {
-    //     std::cerr << "bad_alloc caught in ThreadPool::ThreadFunc task: " << ba.what() << '\n';
-    // }
-
     EventLoop loop;
-    lp = &loop;
-    EchoServer echoServer(&loop, port, iothreadnum);
-    echoServer.Start();
-    loop.loop();
+    HttpServer httpServer(&loop, port, iothreadnum, workerthreadnum);
+    httpServer.Start();
+    try
+    {
+        loop.loop();
+    }
+    catch (std::bad_alloc& ba)
+    {
+        std::cerr << "bad_alloc caught in ThreadPool::ThreadFunc task: " << ba.what() << '\n';
+    }
+
+    // EventLoop loop;
+    // EchoServer echoServer(&loop, port, iothreadnum);
+    // echoServer.Start();
+    // loop.loop();
 
     return 0;
 }

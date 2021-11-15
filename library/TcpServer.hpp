@@ -92,6 +92,10 @@ TcpServer::~TcpServer()
 {
 }
 
+/*
+ * 
+ * 
+ */
 void TcpServer::Start()
 {
     eventLoopThreadPool.Start();
@@ -99,6 +103,10 @@ void TcpServer::Start()
     loop_->AddChannelToPoller(&tcpServerChannel_);
 }
 
+/*
+ * 
+ * 
+ */
 void TcpServer::OnNewConnection()
 {
     struct sockaddr_in clientaddr;
@@ -131,7 +139,20 @@ void TcpServer::OnNewConnection()
     }
 }
 
-// 连接清理,bugfix:这里应该由主loop来执行，投递回主线程删除 OR 多线程加锁删除
+/*
+ * 
+ * 
+ */
+void TcpServer::OnConnectionError()
+{
+    std::cout << "UNKNOWN EVENT" << std::endl;
+    tcpServerSocket_.Close();
+}
+
+/*
+ * 连接清理,bugfix:这里应该由主loop来执行，投递回主线程删除 OR 多线程加锁删除
+ * 
+ */
 void TcpServer::RemoveConnection(std::shared_ptr<TcpConnection> sptcpconnection)
 {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -139,12 +160,10 @@ void TcpServer::RemoveConnection(std::shared_ptr<TcpConnection> sptcpconnection)
     tcpConnList_.erase(sptcpconnection->fd());
 }
 
-void TcpServer::OnConnectionError()
-{
-    std::cout << "UNKNOWN EVENT" << std::endl;
-    tcpServerSocket_.Close();
-}
-
+/*
+ * 
+ * 
+ */
 void Setnonblocking(int fd)
 {
     int opts = fcntl(fd, F_GETFL);

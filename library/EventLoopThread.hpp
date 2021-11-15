@@ -40,16 +40,28 @@ EventLoopThread::~EventLoopThread()
     childThread_.join(); // 清理IO线程，防止内存泄漏，因为pthread_created会calloc
 }
 
+/*
+ * 
+ * 
+ */
 EventLoop *EventLoopThread::GetLoop()
 {
     return loop_;
 }
 
+/*
+ * 
+ * 
+ */
 void EventLoopThread::Start()
 {
     childThread_ = std::thread(&EventLoopThread::ThreadFunc, this);
 }
 
+/*
+ * 
+ * 
+ */
 void EventLoopThread::ThreadFunc()
 {
     // 子线程内部

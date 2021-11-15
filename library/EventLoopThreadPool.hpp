@@ -47,6 +47,10 @@ EventLoopThreadPool::~EventLoopThreadPool()
     eventLoopThreadList_.clear();
 }
 
+/*
+ * 
+ * 
+ */
 void EventLoopThreadPool::Start()
 {
     if (threadNum_ > 0)
@@ -58,6 +62,10 @@ void EventLoopThreadPool::Start()
     }
 }
 
+/*
+ * 
+ * 
+ */
 EventLoop *EventLoopThreadPool::GetNextLoop()
 {
     if (threadNum_ > 0)

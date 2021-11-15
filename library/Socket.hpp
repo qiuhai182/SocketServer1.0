@@ -19,27 +19,18 @@
 class Socket
 {
 private:
-    // 服务器socket文件描述符
     int _socketFd;
-    
-public:
-    Socket(/* args */);
-    ~Socket();
-    // 获取fd
-    int fd() const { return _socketFd; }   
-    // 设置地址重用
-    void SetReuseAddr();
-    // 设置非阻塞
-    void SetNonblocking();
-    // 绑定地址
-    bool BindAddress(int serverport);
-    // 开启监听
-    bool Listen();
-    // accept获取连接
-    int Accept(struct sockaddr_in &clientaddr);
-    // 关闭服务器fd
-    bool Close();
 
+public:
+    Socket();
+    ~Socket();
+    int fd() const { return _socketFd; }
+    void SetReuseAddr();
+    void SetNonblocking();
+    bool BindAddress(int serverport);
+    bool Listen();
+    int Accept(struct sockaddr_in &clientaddr);
+    bool Close();
 };
 
 Socket::Socket()
@@ -57,12 +48,20 @@ Socket::~Socket()
     close(_socketFd);
 }
 
+/*
+ * 
+ * 
+ */
 void Socket::SetReuseAddr()
 {
     int on = 1;
     setsockopt(_socketFd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
 }
 
+/*
+ * 
+ * 
+ */
 void Socket::SetNonblocking()
 {
     // 获取属性
@@ -80,6 +79,10 @@ void Socket::SetNonblocking()
     }
 }
 
+/*
+ * 
+ * 
+ */
 bool Socket::BindAddress(int serverPort)
 {
     struct sockaddr_in serverAddr;
@@ -97,6 +100,10 @@ bool Socket::BindAddress(int serverPort)
     return true;
 }
 
+/*
+ * 
+ * 
+ */
 bool Socket::Listen()
 {
     if (listen(_socketFd, 8192) < 0)
@@ -108,6 +115,10 @@ bool Socket::Listen()
     return true;
 }
 
+/*
+ * 
+ * 
+ */
 int Socket::Accept(struct sockaddr_in &clientAddr)
 {
     socklen_t lengthOfClientAddr = sizeof(clientAddr);
@@ -119,6 +130,10 @@ int Socket::Accept(struct sockaddr_in &clientAddr)
     return clientFd;
 }
 
+/*
+ * 
+ * 
+ */
 bool Socket::Close()
 {
     close(_socketFd);

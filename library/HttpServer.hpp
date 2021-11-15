@@ -15,42 +15,27 @@
 #include "ThreadPool.hpp"
 #include "Timer.hpp"
 
-
 class HttpServer
 {
 public:
-    //tcp连接的智能指针类型
     typedef std::shared_ptr<TcpConnection> spTcpConnection;
-    //定时器的智能指针类型
     typedef std::shared_ptr<Timer> spTimer;
     HttpServer(EventLoop *loop, const int port, const int iothreadnum, const int workerthreadnum);
     ~HttpServer();
-    //启动Http服务器
-    void Start(); 
+    void Start();
 
 private:
-    //新连接回调函数
-    void HandleNewConnection(const spTcpConnection& sptcpconn); 
-    //数据接收回调函数
-    void HandleMessage(const spTcpConnection &sptcpconn, std::string &msg); 
-    //数据发送完成回调函数
-    void HandleSendComplete(const spTcpConnection& sptcpconn); 
-    //连接关闭回调函数
-    void HandleClose(const spTcpConnection& sptcpconn); 
-    //连接异常回调函数
-    void HandleError(const spTcpConnection& sptcpconn); 
-    //bugfix:声明顺序调整，map、mutex放到最后析构
-    //管理Http会话
-    std::map<spTcpConnection, std::shared_ptr<HttpSession> > httpsessionnlist_; 
-    //管理定时器,维护活跃连接
-    std::map<spTcpConnection, spTimer> timerlist_; 
-    //保护以上两个map的互斥量
-    std::mutex mutex_; 
-    //tcp服务器
-    TcpServer tcpserver_; 
-    //工作线程池
-    ThreadPool threadpool_; 
-
+    void HandleNewConnection(const spTcpConnection &sptcpconn);
+    void HandleMessage(const spTcpConnection &sptcpconn, std::string &msg);
+    void HandleSendComplete(const spTcpConnection &sptcpconn);
+    void HandleClose(const spTcpConnection &sptcpconn);
+    void HandleError(const spTcpConnection &sptcpconn);
+    // bugfix:声明顺序调整，map、mutex放到最后析构
+    std::map<spTcpConnection, std::shared_ptr<HttpSession>> httpSessionnList_;
+    std::map<spTcpConnection, spTimer> timerList_;
+    std::mutex mutex_;
+    TcpServer tcpserver_;
+    ThreadPool threadpool_;
 };
 
 HttpServer::HttpServer(EventLoop *loop, const int port, const int iothreadnum, const int workerthreadnum)
@@ -62,119 +47,127 @@ HttpServer::HttpServer(EventLoop *loop, const int port, const int iothreadnum, c
     tcpserver_.SetSendCompleteCallback(std::bind(&HttpServer::HandleSendComplete, this, std::placeholders::_1));
     tcpserver_.SetCloseCallback(std::bind(&HttpServer::HandleClose, this, std::placeholders::_1));
     tcpserver_.SetErrorCallback(std::bind(&HttpServer::HandleError, this, std::placeholders::_1));
-
-    threadpool_.Start();                              //工作线程池启动
-    TimerManager::GetTimerManagerInstance()->Start(); //HttpServer定时器管理器启动
+    threadpool_.Start();
+    TimerManager::GetTimerManagerInstance()->Start();
 }
 
 HttpServer::~HttpServer()
 {
 }
 
+/*
+ * 
+ * 
+ */
 void HttpServer::HandleNewConnection(const spTcpConnection &sptcpconn)
 {
-    //std::string msg(s);
-    std::shared_ptr<HttpSession> sphttpsession = std::make_shared<HttpSession>(); //创建应用层会话
+    std::shared_ptr<HttpSession> sphttpsession = std::make_shared<HttpSession>();
     spTimer sptimer = std::make_shared<Timer>(5000, Timer::TimerType::TIMER_ONCE, std::bind(&TcpConnection::Shutdown, sptcpconn));
     sptimer->Start();
-    //可以优化成无锁，放入conn里面就行
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        httpsessionnlist_[sptcpconn] = sphttpsession;
-        timerlist_[sptcpconn] = sptimer;
+        httpSessionnList_[sptcpconn] = sphttpsession;
+        timerList_[sptcpconn] = sptimer;
     }
 }
 
+/*
+ * 
+ * 
+ */
 void HttpServer::HandleMessage(const spTcpConnection &sptcpconn, std::string &msg)
 {
     std::shared_ptr<HttpSession> sphttpsession;
     spTimer sptimer;
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        sphttpsession = httpsessionnlist_[sptcpconn];
-        sptimer = timerlist_[sptcpconn];
+        sphttpsession = httpSessionnList_[sptcpconn];
+        sptimer = timerList_[sptcpconn];
     }
     sptimer->Adjust(5000, Timer::TimerType::TIMER_ONCE, std::bind(&TcpConnection::Shutdown, sptcpconn));
-
+    std::string responsecontext;
     if (threadpool_.GetThreadNum() > 0)
     {
-        //Bug20190320：多线程下，对象的声明周期管理问题，就像在这里，向线程池传入了phttpsession和ptcpconn，怎么知道其指向对象是否已经析构了呢？
-        //所以，需要采用智能指针来管理对象,替换原始指针
-        //线程池处理业务，处理完后投递回本IO线程执行send
-        //std::cout << "threadpool_.AddTask" << std::endl;
         HttpRequestContext httprequestcontext;
-        std::string responsecontext;
-        bool result = sphttpsession->PraseHttpRequest(msg, httprequestcontext);
+        bool result = sphttpsession->ParseHttpRequest(msg, httprequestcontext);
         if (result == false)
         {
-            sphttpsession->HttpError(400, "Bad request", httprequestcontext, responsecontext); //请求报文解析错误，报400
+            sphttpsession->HttpError(400, "Bad request", httprequestcontext, responsecontext);
             sptcpconn->Send(responsecontext);
             return;
         }
-
         sptcpconn->SetAsyncProcessing(true);
         threadpool_.AddTask([=]()
                             {
-                                //HttpRequestContext req = httprequestcontext;
-                                std::string responsemsg;
-                                sphttpsession->HttpProcess(httprequestcontext, responsemsg);
-
-                                sptcpconn->Send(responsemsg); //任务已经处理完成，执行跨线程调度，即回调
-
+                                std::string responsecontext;
+                                sphttpsession->HttpProcess(httprequestcontext, responsecontext);
+                                sptcpconn->Send(responsecontext);
                                 if (!sphttpsession->KeepAlive())
                                 {
-                                    //短连接，可以告诉框架层数据发完就可以关掉TCP连接，不过这里注释掉，还是交给客户端主动关闭吧
-                                    //sptcpconn->HandleClose();
+                                    // 短连接，关闭连接
+                                    // sptcpconn->HandleClose();
                                 }
                             });
     }
     else
     {
-        //没有开启业务线程池，业务计算直接在IO线程执行
+        // 没有开启业务线程池，业务计算直接在IO线程执行
         HttpRequestContext httprequestcontext;
-        std::string responsecontext;
-        bool result = sphttpsession->PraseHttpRequest(msg, httprequestcontext);
+        bool result = sphttpsession->ParseHttpRequest(msg, httprequestcontext);
         if (result == false)
         {
-            sphttpsession->HttpError(400, "Bad request", httprequestcontext, responsecontext); //请求报文解析错误，报400
+            sphttpsession->HttpError(400, "Bad request", httprequestcontext, responsecontext); // 请求报文解析错误，报400
             sptcpconn->Send(responsecontext);
             return;
         }
-
         sphttpsession->HttpProcess(httprequestcontext, responsecontext);
-
         sptcpconn->Send(responsecontext);
-
         if (!sphttpsession->KeepAlive())
         {
-            //短连接，可以告诉框架层数据发完就可以关掉TCP连接，不过这里注释掉，还是交给客户端主动关闭吧
-            //sptcpconn->HandleClose();
+            // 短连接，关闭连接
+            // sptcpconn->HandleClose();
         }
     }
 }
 
+/*
+ * 
+ * 
+ */
 void HttpServer::HandleSendComplete(const spTcpConnection &sptcpconn)
 {
 }
 
+/*
+ * 
+ * 
+ */
 void HttpServer::HandleClose(const spTcpConnection &sptcpconn)
 {
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        httpsessionnlist_.erase(sptcpconn);
-        timerlist_.erase(sptcpconn);
+        httpSessionnList_.erase(sptcpconn);
+        timerList_.erase(sptcpconn);
     }
 }
 
+/*
+ * 
+ * 
+ */
 void HttpServer::HandleError(const spTcpConnection &sptcpconn)
 {
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        httpsessionnlist_.erase(sptcpconn);
-        timerlist_.erase(sptcpconn);
+        httpSessionnList_.erase(sptcpconn);
+        timerList_.erase(sptcpconn);
     }
 }
 
+/*
+ * 
+ * 
+ */
 void HttpServer::Start()
 {
     tcpserver_.Start();

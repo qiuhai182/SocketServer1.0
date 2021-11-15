@@ -48,6 +48,10 @@ void EchoServer::Start()
     tcpserver_.Start();
 }
 
+/*
+ * 
+ * 
+ */
 void EchoServer::HandleMessage(const spTcpConnection &sptcpconn, std::string &s)
 {
     //std::string msg("reply msg:");
@@ -59,21 +63,37 @@ void EchoServer::HandleMessage(const spTcpConnection &sptcpconn, std::string &s)
     sptcpconn->Send(msg);
 }
 
+/*
+ * 
+ * 
+ */
 void EchoServer::HandleNewConnection(const spTcpConnection &sptcpconn)
 {
     std::cout << "New Connection Come in" << std::endl;
 }
 
+/*
+ * 
+ * 
+ */
 void EchoServer::HandleSendComplete(const spTcpConnection &sptcpconn)
 {
     std::cout << "Message send complete" << std::endl;
 }
 
+/*
+ * 
+ * 
+ */
 void EchoServer::HandleClose(const spTcpConnection &sptcpconn)
 {
     std::cout << "EchoServer conn close" << std::endl;
 }
 
+/*
+ * 
+ * 
+ */
 void EchoServer::HandleError(const spTcpConnection &sptcpconn)
 {
     std::cout << "EchoServer error" << std::endl;
