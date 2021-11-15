@@ -1,0 +1,89 @@
+syntax = "proto2";
+import "common.proto";
+package accountService;
+option cc_generic_services = true;
+
+
+
+/*
+ * 
+ * 
+ */
+message userInfoReq 
+{ // 用户数据请求信息
+	required string userId = 1;
+}
+
+/*
+ * 
+ * 
+ */
+message userInfoResp 
+{ // 用户数据回发信息
+	required string userId = 1;			// 账户
+	optional string nickName = 2;		// 昵称
+	optional string headImgUrl = 3;		// 头像url链接
+	optional string userPwd = 4;		// 密码
+	optional string profile = 7;		// 简介
+	optional bool male = 5;				// 性别
+	optional int32 age = 6;				// 年龄
+}
+
+/*
+ * 
+ * 
+ */
+message userInfoRespList 
+{ // 大量用户数据回发信息
+	repeated userInfoResp lists = 2;
+	required int32 count = 3;
+}
+
+/*
+ * 登录请求信息
+ * 
+ */
+message loginInfoReq 
+{
+      required string userId = 1; 		// 账户
+      required string userPwd = 2;		// 密码
+      optional string loginTime = 3;	// 登录时间
+      optional string logintype = 4;	// 登录设备类型
+};
+
+/*
+ * 注册请求信息
+ * 
+ */
+message registerReq 
+{
+	required string userId = 1;			// 注册账号
+	required string userPwd = 2;		// 注册密码
+};
+
+/*
+ * 根据命令模糊匹配获取大量用户数据请求信息
+ * 
+ */
+message getLikeUserInfoReq 
+{
+	required string cond_option = 1;	// 匹配类型
+	required string cond_value = 2;		// 匹配命令
+	optional int32 offset = 3;			// 偏移值
+	optional int32 size = 4;			// 每页数目
+}
+
+
+
+
+service accountService 
+{ // 账户信息服务
+	rpc loginFun(loginInfoReq) returns (commonService.commonResp);
+	rpc registerFun(registerReq) returns (commonService.commonResp);
+	rpc userInfoFun(userInfoReq) returns (userInfoResp);
+	rpc getLikeUserInfoFun(getLikeUserInfoReq) returns(userInfoRespList);
+	rpc setUserInfoFun(userInfoResp) returns (commonService.commonResp);
+	rpc delUserFun(loginInfoReq) returns (commonService.commonResp);
+}
+
+

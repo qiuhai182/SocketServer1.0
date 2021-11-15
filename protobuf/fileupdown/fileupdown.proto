@@ -1,0 +1,35 @@
+syntax = "proto2";
+package fileService;
+option cc_generic_services = true;
+
+
+/*
+ * 
+ * 
+ */
+message HttpRequest 
+{ // 无格式网络请求信息
+}
+
+
+/*
+ * 
+ * 
+ */
+message HttpResponse 
+{ // 无格式网络请求回发信息
+}
+
+
+
+/*
+ * 
+ * 
+ */
+service fileService 
+{ // 文件传输服务
+  rpc fileDownFun(HttpRequest) returns(HttpResponse);
+}
+
+
+

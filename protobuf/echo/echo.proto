@@ -1,0 +1,32 @@
+syntax = "proto2";
+package echoService;
+option cc_generic_services = true;
+
+
+/*
+ * 
+ * 
+ */
+message EchoRequest 
+{ // 测试请求信息
+      required string message = 1;
+}
+
+/*
+ * 
+ * 
+ */
+message EchoResponse 
+{ // 测试回发信息
+      required string message = 1;
+}
+
+
+
+
+service echoService
+{ // 测试服务
+      rpc EchoFun(EchoRequest) returns (EchoResponse);
+}
+
+

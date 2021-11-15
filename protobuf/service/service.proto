@@ -1,0 +1,51 @@
+syntax = "proto2";
+import "common.proto";
+package serviceService;
+option cc_generic_services = true;
+
+
+
+
+/*
+ * 服务大区基本信息
+ * 
+ */
+message serviceInfo
+{
+    required string serviceId = 1;      // 服务器ID
+    required string serviceName = 2;    // 服务器区号
+    required string serviceNickName = 3;// 服务器昵称
+    optional int32 serviceUserNum = 4; // 服务大区角色数量
+}
+
+
+/*
+ * 获取服务大区列表请求
+ * 
+ */
+message getAllServicesReq
+{
+    optional string userId = 1;
+}
+
+
+/*
+ * 服务大区信息返回列表
+ * 
+ */
+message getAllServicesRes
+{
+    repeated serviceInfo lists = 1;     // 服务大区信息列表
+    required int32 count = 2;           // 列表元素数量
+}
+
+
+
+
+service serviceService
+{
+    rpc addServiceFun(serviceInfo) returns(commonService.commonResp);
+    rpc getAllServicesFun(getAllServicesReq) returns(getAllServicesRes);
+}
+
+

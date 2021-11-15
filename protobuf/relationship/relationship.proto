@@ -1,0 +1,48 @@
+syntax = "proto2";
+import "common.proto";
+package relationshipService;
+option cc_generic_services = true;
+
+
+
+/*
+ * 角色好友基本关系
+ * 
+ */
+ message relationInfo
+ {
+    optional string friendId = 2;               // 朋友ID
+	optional int32 relationship = 3;		    // 关系
+	optional int32 attachedRelationship = 4;    // 附加关系
+ }
+
+/*
+ * 获取角色好友关系请求
+ * 
+ */
+message relationshipReq
+{
+    required string characterId = 1;    // 角色ID
+}
+
+/*
+ * 获取角色好友关系
+ * 
+ */
+message relationshipRes
+{
+    required string characterId = 1;    // 角色ID
+    repeated relationInfo lists = 2;    // 关系列表
+    required int32 count = 3;           // 列表关系数量
+}
+
+
+
+service relationshipService
+{
+    rpc relationshipInfo(relationshipReq) returns (relationshipRes);
+}
+
+
+
+

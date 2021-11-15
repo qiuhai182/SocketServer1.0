@@ -1,0 +1,101 @@
+syntax = "proto2";
+package commonService;
+option cc_generic_services = true;
+
+
+// message 嵌套时，用 。。。->mutable_message名字()->set_字段(值)
+
+
+
+/*
+ * 
+ * 
+ */
+message commonResp 
+{ // 通用回复信息
+      required int32 code = 1;			// 结果状态码
+      optional string errorRes = 2;		// 结果状态
+}
+
+/*
+ * 
+ * 
+ */
+message supportReq
+{ // 新增或删除点赞信息请求
+	required string bookId = 1;			// 书籍id
+	optional int32  commentId = 2;		// 点赞的目标评论id
+	required string userId = 3;			// 点赞用户id
+	required string timestamp = 4;		// 时间
+}
+
+/*
+ * 
+ * 
+ */
+message commentItem 
+{ // 评论信息
+	optional string bookId = 1;
+	optional int32  pageNum = 2;				// 页数不存在表示对书籍评论，存在表示对某一页评论
+	optional int32  commentId = 3;
+	optional int32  parentId = 4;				// 页数存在时，父节点不存在表示顶层评论，存在表示对父评论的回复信息
+	required string commentContent = 5;
+	required string userId = 6;
+	optional string nickName = 7;
+	optional string headUrl = 8;
+	required string timestamp = 9;
+	optional string hitId = 10;
+	optional int32  childCount = 11; 			// 收到直接回复信息数量
+	repeated commentItem childComments = 12;	// 收到直接回复信息
+}
+
+/*
+ * 
+ * 
+ */
+message DelCommentReq 
+{ // 删除评论信息
+	required string userId = 1;
+	required int32  commentId = 2;
+}
+
+/*
+ * 
+ * 
+ */
+message commentListResp 
+{ // 回复大量评论信息
+	repeated commentItem lists = 1;		// 
+	required int32 count = 2;			// 
+}
+
+/*
+ * 
+ * 
+ */
+message getCommentReq 
+{ // 获取书籍某页某行的评论信息
+	optional string userId = 1;			// 用户id
+	optional string bookId = 2;			// 书籍id
+	optional int32  pageNum = 3;		// 页数
+	optional int32  lines = 4;			// 行数
+	optional int32  count = 5;			// 本次查询需要的最大评论数量
+}
+
+
+
+
+
+
+service commonService 
+{ // 收集评论、点赞数据
+	rpc addCommentFun(commentItem) returns(commonResp);						// 
+	rpc delCommentFun(DelCommentReq) returns(commonResp);					// 
+	rpc getCommentFun(getCommentReq) returns(commentListResp);				// 
+	rpc getCommentRecordFun(getCommentReq) returns(commentListResp);		// 
+	rpc delCommentRecordFun(DelCommentReq) returns(commonResp);				// 
+	rpc addSupportFun(supportReq) returns(commonResp);						// 
+	rpc delSupportFun(supportReq) returns(commonResp);						// 
+}
+
+

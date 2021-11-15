@@ -1,0 +1,127 @@
+syntax = "proto2";
+import "common.proto";
+package characterService;
+option cc_generic_services = true;
+
+
+
+/*
+ * 角色信息表
+ * 
+ */
+message characterInfo
+{
+    required string characterId = 1;      // 角色ID
+	optional string serviceId = 2;		  // 服务器ID
+	optional string userId = 3;			  // 所属用户ID
+	optional string characterName = 4;	  // 角色昵称
+	optional int32  characterMale = 5;	  // 角色性别
+	optional string characterProfile = 6; // 角色个性签名
+}
+
+/*
+ * 请求角色信息
+ * 
+ */
+message characterInfoReq
+{
+    required string characterId = 1;    // 角色ID
+}
+
+/*
+ * 请求玩家拥有的角色列表
+ * 
+ */
+message characterListsReq
+{
+	required string userId = 1;
+}
+
+/*
+ * 请求玩家拥有的最近一次登录的角色
+ * 
+ */
+message getLatestCharacterReq
+{
+	required string userId = 1;
+}
+
+/*
+ * 角色列表返回值
+ * 
+ */
+message characterListsRes
+{
+	required string userId = 1;
+	repeated characterInfo lists = 2;
+	required int32 count = 3;
+}
+
+/*
+ * 创建角色请求
+ * 
+ */
+message addCharacterReq
+{
+	required string userId = 1;
+	required string serviceId = 2;
+	required string characterName = 3;
+	required int32 characterMale = 4;
+}
+
+/*
+ * 创建角色返回角色ID
+ * 
+ */
+message addCharacterRes
+{
+	optional int32 code = 1;
+	required string characterId = 2;
+}
+
+/*
+ * 删除角色请求
+ * 
+ */
+message removeCharacterReq
+{
+	required string characterId = 1;
+	optional string userId = 2;
+}
+
+/*
+ * 设置最新登录角色
+ * 
+ */
+message setLatestCharacterReq
+{
+	required string characterId = 1;
+	required string userId = 2;
+}
+
+/*
+ * 查询玩家在某服务大区的所有角色信息
+ * 
+ */
+message getServiceCharactersReq
+{
+	required string userId = 1;
+	required string serviceId = 2;
+}
+
+
+
+
+
+service characterService
+{
+    rpc characterInfoFun(characterInfoReq) returns (characterInfo);
+	rpc charactersInfoFun(characterListsReq) returns (characterListsRes);
+	rpc addCharacterFun(addCharacterReq) returns(addCharacterRes);
+	rpc removeCharacterFun(removeCharacterReq) returns(commonService.commonResp);
+	rpc getServiceCharactersFun(getServiceCharactersReq) returns(characterListsRes);
+	rpc setLatestCharacterFun(setLatestCharacterReq) returns(commonService.commonResp);
+	rpc getLatestCharacterFun(getLatestCharacterReq) returns(characterInfo);
+}
+
+
