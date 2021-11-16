@@ -23,34 +23,12 @@ public:
     EventLoop();
     ~EventLoop();
     void loop();
-    void AddChannelToPoller(Channel *pchannel)
-    {
-        poller_.AddChannel(pchannel);
-    }
-    void RemoveChannelToPoller(Channel *pchannel)
-    {
-        poller_.RemoveChannel(pchannel);
-    }
-    void UpdateChannelToPoller(Channel *pchannel)
-    {
-        poller_.UpdateChannel(pchannel);
-    }
-    void Quit()
-    {
-        quit_ = true;
-    }
-    std::thread::id GetThreadId() const
-    {
-        return tid_;
-    }
-    void AddTask(Functor functor)
-    {
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            functorList_.push_back(functor);
-        }
-        WakeUp(); // 跨线程唤醒，worker线程唤醒IO线程
-    }
+    void AddChannelToPoller(Channel *pchannel);
+    void RemoveChannelToPoller(Channel *pchannel);
+    void UpdateChannelToPoller(Channel *pchannel);
+    void Quit();
+    std::thread::id GetThreadId() const;
+    void AddTask(Functor functor);
     void WakeUp();
     void HandleRead();
     void HandleError();
@@ -68,18 +46,18 @@ private:
 };
 
 /*
- * 参照muduo，实现跨线程唤醒
- * 
+ * eventfd函数创建文件描述符
+ * 进程/线程间共享同一个内核维护uint值存取，支持read、write
  */
 int CreateEventFd()
 {
-    int evtfd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
-    if (evtfd < 0)
+    int evtFd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
+    if (evtFd < 0)
     {
         std::cout << "Failed in eventfd" << std::endl;
         exit(1);
     }
-    return evtfd;
+    return evtFd;
 }
 
 EventLoop::EventLoop()
@@ -105,7 +83,7 @@ EventLoop::~EventLoop()
 }
 
 /*
- * 
+ * 唤醒线程读取数据函数
  * 
  */
 void EventLoop::HandleRead()
@@ -115,7 +93,7 @@ void EventLoop::HandleRead()
 }
 
 /*
- * 
+ * 唤醒线程错误处理函数
  * 
  */
 void EventLoop::HandleError()
@@ -123,7 +101,65 @@ void EventLoop::HandleError()
 }
 
 /*
+ * Poller监听Channel对应新连接
  * 
+ */
+void EventLoop::AddChannelToPoller(Channel *pchannel)
+{
+    poller_.AddChannel(pchannel);
+}
+
+/*
+ * Poller移除Channel对应连接监听
+ * 
+ */
+void EventLoop::RemoveChannelToPoller(Channel *pchannel)
+{
+    poller_.RemoveChannel(pchannel);
+}
+
+/*
+ * Poller更改Channel对应连接事件信息
+ * 
+ */
+void EventLoop::UpdateChannelToPoller(Channel *pchannel)
+{
+    poller_.UpdateChannel(pchannel);
+}
+
+/*
+ * 停止运行EventLoop事件循环
+ * 
+ */
+void EventLoop::Quit()
+{
+    quit_ = true;
+}
+
+/*
+ * 获取EventLoop所在线程ID
+ * 
+ */
+std::thread::id EventLoop::GetThreadId() const
+{
+    return tid_;
+}
+
+/*
+ * EventLoop添加任务函数到functorList_
+ * 唤醒工作线程
+ */
+void EventLoop::AddTask(Functor functor)
+{
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        functorList_.push_back(functor);
+    }
+    WakeUp();
+}
+
+/*
+ * 唤醒线程，实则为向eventfd生成的文件描述符内写入唤醒标志值
  * 
  */
 void EventLoop::WakeUp()
@@ -133,8 +169,9 @@ void EventLoop::WakeUp()
 }
 
 /*
- * 
- * 
+ * EventLoop循环函数，循环调用Poller封装poll函数，获取一批次新连接
+ * 调用每一个连接对应的Channel的HandleEvent函数，执行动态绑定的处理函数
+ * 执行functorList_里的所有任务函数
  */
 void EventLoop::loop()
 {
@@ -156,7 +193,7 @@ void EventLoop::loop()
 }
 
 /*
- * 
+ * 执行functorList_里的所有任务函数
  * 
  */
 void EventLoop::ExecuteTask()

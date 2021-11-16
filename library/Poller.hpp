@@ -8,7 +8,6 @@
 #include <mutex>
 #include <map>
 #include <sys/epoll.h>
-#include <errno.h>
 #include "Channel.hpp"
 
 #define MAXEVENTNUM 4096 // 最大触发事件数量
@@ -50,7 +49,7 @@ Poller::~Poller()
 }
 
 /*
- * 
+ * 封装epoll_wait函数，获取一批次新连接
  * 
  */
 void Poller::poll(ChannelList &activeChannelList)
@@ -94,7 +93,7 @@ void Poller::poll(ChannelList &activeChannelList)
 }
 
 /*
- * 
+ * 向pollFd_添加监听Channel对应的新连接
  * 
  */
 void Poller::AddChannel(Channel *pchannel)
@@ -116,7 +115,7 @@ void Poller::AddChannel(Channel *pchannel)
 }
 
 /*
- * 
+ * 移除pollFd_里Channel对应的连接的监听
  * 
  */
 void Poller::RemoveChannel(Channel *pchannel)
@@ -138,7 +137,7 @@ void Poller::RemoveChannel(Channel *pchannel)
 }
 
 /*
- * 
+ * 更新pollFd_里Channel对应监听事件的信息
  * 
  */
 void Poller::UpdateChannel(Channel *pchannel)

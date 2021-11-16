@@ -1,6 +1,6 @@
 
-//ThreadPool类，简易线程池实现，表示worker线程,执行通用任务线程
-//
+// 线程池类
+
 // 使用的同步原语有
 // pthread_mutex_t mutex_l;//互斥锁
 // pthread_cond_t condtion_l;//条件变量
@@ -29,7 +29,6 @@
 #include <condition_variable>
 #include <functional>
 #include <deque>
-#include <unistd.h>
 
 class ThreadPool
 {
@@ -41,10 +40,7 @@ public:
     void Stop();
     void AddTask(Task task);
     void ThreadFunc();
-    int GetThreadNum()
-    {
-        return threadNum_;
-    }
+    int GetThreadNum();
 
 private:
     bool started_;
@@ -81,7 +77,7 @@ ThreadPool::~ThreadPool()
 }
 
 /*
- * 
+ * 启动线程池，新开threadNum_个子线程作为工作线程
  * 
  */
 void ThreadPool::Start()
@@ -98,18 +94,23 @@ void ThreadPool::Start()
 }
 
 /*
- * 
+ * 线程池停止执行，唤醒并关闭所有工作线程
  * 
  */
 void ThreadPool::Stop()
 {
     started_ = false;
     condition_.notify_all();
+    for (auto i : threadList_)
+    {
+        i->detach();
+    }
+    threadList_.clear();
 }
 
 /*
- * 
- * 
+ * 为线程池任务队列taskQueue_加锁添加任务
+ * 随机唤醒一个工作线程
  */
 void ThreadPool::AddTask(Task task)
 {
@@ -117,20 +118,19 @@ void ThreadPool::AddTask(Task task)
         std::lock_guard<std::mutex> lock(mutex_);
         taskQueue_.push(task);
     }
-    // 随机解锁正在等待当前条件的线程中的一个
     condition_.notify_one();
 }
 
 /*
- * 
- * 
+ * 线程回调函数，在每个工作线程内长期执行直至子线程被回收
+ * 单次遍历，加锁取出taskQueue_的一个任务并执行
  */
 void ThreadPool::ThreadFunc()
 {
     std::thread::id tid = std::this_thread::get_id();
     std::stringstream sin;
     sin << tid;
-    std::cout << "worker thread is running :" << tid << std::endl;
+    std::cout << "工作子线程: " << tid << std::endl;
     Task task;
     while (started_)
     {
@@ -139,14 +139,15 @@ void ThreadPool::ThreadFunc()
             std::unique_lock<std::mutex> lock(mutex_);
             while (taskQueue_.empty() && started_)
             {
+                // 线程阻塞并等待被唤醒
                 condition_.wait(lock);
             }
             if (!started_)
             {
                 break;
             }
-            std::cout << "wake up" << tid << std::endl;
-            std::cout << "size :" << taskQueue_.size() << std::endl;
+            std::cout << "工作线程唤醒: " << tid << std::endl;
+            std::cout << "现有待处理任务数量: " << taskQueue_.size() << std::endl;
             task = taskQueue_.front();
             taskQueue_.pop();
         }
@@ -158,9 +159,22 @@ void ThreadPool::ThreadFunc()
             }
             catch (std::bad_alloc &ba)
             {
-                std::cerr << "bad_alloc caught in ThreadPool::ThreadFunc task: " << ba.what() << '\n';
+                std::cerr << "bad_alloc错误捕获于函数ThreadPool::ThreadFunc，报错: " << ba.what() << '\n';
                 while (1);
             }
         }
     }
+    if (!started_)
+    {
+        std::cout << "工作子线程退出：" << tid << std::endl;
+    }
+}
+
+/*
+ * 获取线程数量
+ * 
+ */
+int ThreadPool::GetThreadNum()
+{
+    return threadNum_;
 }

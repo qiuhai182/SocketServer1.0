@@ -1,4 +1,6 @@
 
+// http网络会话类
+
 // GET /register.do?p={%22username%22:%20%2213917043329%22,%20%22nickname%22:%20%22balloon%22,%20%22password%22:%20%22123%22} HTTP/1.1\r\n
 // GET / HTTP/1.1
 // Host: baidu.com
@@ -43,13 +45,12 @@
 
 #pragma once
 
+#include <iostream>
 #include <string>
 #include <sstream>
 #include <map>
-#include <iostream>
-#include <stdio.h>
-#include <string.h>
 
+// http请求信息结构
 typedef struct _HttpRequestContext
 {
     std::string method;
@@ -59,6 +60,7 @@ typedef struct _HttpRequestContext
     std::string body;
 } HttpRequestContext;
 
+// http响应信息结构
 typedef struct _HttpResponseContext
 {
     std::string version;
@@ -71,34 +73,19 @@ typedef struct _HttpResponseContext
 class HttpSession
 {
 private:
-    //解析报文相关成员
-    HttpRequestContext httprequestcontext_;
-    bool parseresult_;
-    //Http响应报文相关成员
-    std::string responsecontext_;
-    std::string responsebody_;
-    std::string errormsg;
-    std::string path_;
-    std::string querystring_;
-    //长连接标志
-    bool keepalive_;
-    std::string body_buff;
+    bool keepalive_; // 长连接标志
 
 public:
-    HttpSession();
+    HttpSession(); // 单例模式
     ~HttpSession();
     bool ParseHttpRequest(std::string &s, HttpRequestContext &httprequestcontext);
     void HttpProcess(const HttpRequestContext &httprequestcontext, std::string &responsecontext);
     void HttpError(const int err_num, const std::string short_msg, const HttpRequestContext &httprequestcontext, std::string &responsecontext);
-    bool KeepAlive()
-    {
-        return keepalive_;
-    }
+    bool KeepAlive();
 };
 
 HttpSession::HttpSession()
-    : parseresult_(false),
-      keepalive_(true)
+    : keepalive_(true)
 {
 }
 
@@ -107,7 +94,7 @@ HttpSession::~HttpSession()
 }
 
 /*
- * 
+ * 解析http请求信息
  * 
  */
 bool HttpSession::ParseHttpRequest(std::string &msg, HttpRequestContext &httprequestcontext)
@@ -155,7 +142,6 @@ bool HttpSession::ParseHttpRequest(std::string &msg, HttpRequestContext &httpreq
         msg.clear();
         return parseresult;
     }
-    //parse http request body
     httprequestcontext.body = msg.substr(pos_crlfcrlf + 4);
     parseresult = true;
     msg.clear();
@@ -163,12 +149,11 @@ bool HttpSession::ParseHttpRequest(std::string &msg, HttpRequestContext &httpreq
 }
 
 /*
- * 
+ * http服务提供函数
  * 
  */
 void HttpSession::HttpProcess(const HttpRequestContext &httprequestcontext, std::string &responsecontext)
 {
-    //std::cout << "HttpServer::HttpProcess" << std::endl;
     std::string responsebody;
     std::string errormsg;
     std::string path;
@@ -183,7 +168,6 @@ void HttpSession::HttpProcess(const HttpRequestContext &httprequestcontext, std:
     }
     else
     {
-        std::cout << "HttpServer::HttpParser" << std::endl;
         errormsg = "Method Not Implemented";
         HttpError(501, "Method Not Implemented", httprequestcontext, responsecontext);
         return;
@@ -198,7 +182,7 @@ void HttpSession::HttpProcess(const HttpRequestContext &httprequestcontext, std:
     {
         path = httprequestcontext.url;
     }
-    //keepalive判断处理
+    // keepalive判断处理
     std::map<std::string, std::string>::const_iterator iter = httprequestcontext.header.find("Connection");
     if (iter != httprequestcontext.header.end())
     {
@@ -208,11 +192,11 @@ void HttpSession::HttpProcess(const HttpRequestContext &httprequestcontext, std:
     {
         if (httprequestcontext.version == "HTTP/1.1")
         {
-            keepalive_ = true; //HTTP/1.1默认长连接
+            keepalive_ = true; // HTTP/1.1默认长连接
         }
         else
         {
-            keepalive_ = false; //HTTP/1.0默认短连接
+            keepalive_ = false; // HTTP/1.0默认短连接
         }
     }
     if ("/" == path)
@@ -221,7 +205,6 @@ void HttpSession::HttpProcess(const HttpRequestContext &httprequestcontext, std:
     }
     else if ("/hello" == path)
     {
-        //Wenbbench 测试用
         std::string filetype("text/html");
         responsebody = ("hello world");
         responsecontext += httprequestcontext.version + " 200 OK\r\n";
@@ -236,7 +219,6 @@ void HttpSession::HttpProcess(const HttpRequestContext &httprequestcontext, std:
         responsecontext += responsebody;
         return;
     }
-    //std::string responsebody;
     path.insert(0, ".");
     FILE *fp = NULL;
     if ((fp = fopen(path.c_str(), "rb")) == NULL)
@@ -279,7 +261,7 @@ void HttpSession::HttpProcess(const HttpRequestContext &httprequestcontext, std:
 }
 
 /*
- * 
+ * 处理错误http请求，发送出错信息
  * 
  */
 void HttpSession::HttpError(const int err_num, const std::string short_msg, const HttpRequestContext &httprequestcontext, std::string &responsecontext)
@@ -292,7 +274,6 @@ void HttpSession::HttpError(const int err_num, const std::string short_msg, cons
     responsebody += "<body bgcolor=\"ffffff\"><h1>";
     responsebody += std::to_string(err_num) + " " + short_msg;
     responsebody += "</h1><hr><em> Chen Shuaihao's NetServer</em>\n</body></html>";
-
     std::string httpversion;
     if (httprequestcontext.version.empty())
     {
@@ -302,7 +283,6 @@ void HttpSession::HttpError(const int err_num, const std::string short_msg, cons
     {
         httpversion = httprequestcontext.version;
     }
-
     responsecontext += httpversion + " " + std::to_string(err_num) + " " + short_msg + "\r\n";
     responsecontext += "Server: Chen Shuaihao's NetServer/0.1\r\n";
     responsecontext += "Content-Type: text/html\r\n";
@@ -310,4 +290,13 @@ void HttpSession::HttpError(const int err_num, const std::string short_msg, cons
     responsecontext += "Content-Length: " + std::to_string(responsebody.size()) + "\r\n";
     responsecontext += "\r\n";
     responsecontext += responsebody;
+}
+
+/*
+ * 
+ * 
+ */
+bool HttpSession::KeepAlive()
+{
+    return keepalive_;
 }

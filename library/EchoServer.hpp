@@ -1,5 +1,5 @@
 
-//简单回发服务器
+// 简单回发服务
 
 #pragma once
 
@@ -49,7 +49,7 @@ void EchoServer::Start()
 }
 
 /*
- * 
+ * 处理请求信息函数
  * 
  */
 void EchoServer::HandleMessage(const spTcpConnection &sptcpconn, std::string &s)
@@ -64,7 +64,7 @@ void EchoServer::HandleMessage(const spTcpConnection &sptcpconn, std::string &s)
 }
 
 /*
- * 
+ * 处理新连接函数
  * 
  */
 void EchoServer::HandleNewConnection(const spTcpConnection &sptcpconn)
@@ -73,7 +73,7 @@ void EchoServer::HandleNewConnection(const spTcpConnection &sptcpconn)
 }
 
 /*
- * 
+ * 信息发送完毕处理函数
  * 
  */
 void EchoServer::HandleSendComplete(const spTcpConnection &sptcpconn)
@@ -82,7 +82,7 @@ void EchoServer::HandleSendComplete(const spTcpConnection &sptcpconn)
 }
 
 /*
- * 
+ * 连接关闭处理函数
  * 
  */
 void EchoServer::HandleClose(const spTcpConnection &sptcpconn)
@@ -91,7 +91,7 @@ void EchoServer::HandleClose(const spTcpConnection &sptcpconn)
 }
 
 /*
- * 
+ * 出错处理函数
  * 
  */
 void EchoServer::HandleError(const spTcpConnection &sptcpconn)

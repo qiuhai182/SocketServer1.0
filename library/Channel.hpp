@@ -1,5 +1,6 @@
 
 // Channel类，承载一个事件的套接字描述符fd和事件events，与epoll_event直接交互
+
 //  EPOLLIN ：表示对应的文件描述符可以读（包括对端SOCKET正常关闭）；
 //  EPOLLOUT：表示对应的文件描述符可以写；
 //  EPOLLPRI：表示对应的文件描述符有紧急的数据可读（这里应该表示有带外数据到来）；
@@ -17,43 +18,18 @@
 class Channel
 {
 public:
-    // 回调函数
     typedef std::function<void()> Callback;
     Channel();
     ~Channel();
-    void SetFd(int fd)
-    {
-        fd_ = fd;
-    }
-    int GetFd() const
-    {
-        return fd_;
-    }
-    void SetEvents(uint32_t events)
-    {
-        events_ = events;
-    }
-    uint32_t GetEvents() const
-    {
-        return events_;
-    }
+    void SetFd(int fd);
+    int GetFd() const;
+    void SetEvents(uint32_t events);
+    uint32_t GetEvents() const;
     void HandleEvent();
-    void SetReadHandle(const Callback &cb)
-    {
-        readHandler_ = cb;
-    }
-    void SetWriteHandle(const Callback &cb)
-    {
-        writeHandler = cb;
-    }
-    void SetErrorHandle(const Callback &cb)
-    {
-        errorHandler_ = cb;
-    }
-    void SetCloseHandle(const Callback &cb)
-    {
-        closeHandler_ = cb;
-    }
+    void SetReadHandle(const Callback &cb);
+    void SetWriteHandle(const Callback &cb);
+    void SetErrorHandle(const Callback &cb);
+    void SetCloseHandle(const Callback &cb);
 
 private:
     int fd_;
@@ -75,7 +51,79 @@ Channel::~Channel()
 }
 
 /*
+ * 设置连接套接字fd
  * 
+ */
+void Channel::SetFd(int fd)
+{
+    fd_ = fd;
+}
+
+/*
+ * 获取连接套接字fd
+ * 
+ */
+int Channel::GetFd() const
+{
+    return fd_;
+}
+
+/*
+ * 设置连接事件epoll_event
+ * 
+ */
+void Channel::SetEvents(uint32_t events)
+{
+    events_ = events;
+}
+
+/*
+ * 设置连接事件epoll_event
+ * 
+ */
+uint32_t Channel::GetEvents() const
+{
+    return events_;
+}
+
+/*
+ * 设置数据读取函数
+ * 
+ */
+void Channel::SetReadHandle(const Callback &cb)
+{
+    readHandler_ = cb;
+}
+
+/*
+ * 设置写事件函数
+ * 
+ */
+void Channel::SetWriteHandle(const Callback &cb)
+{
+    writeHandler = cb;
+}
+
+/*
+ * 设置出错处理函数
+ * 
+ */
+void Channel::SetErrorHandle(const Callback &cb)
+{
+    errorHandler_ = cb;
+}
+
+/*
+ * 设置连接关闭函数
+ * 
+ */
+void Channel::SetCloseHandle(const Callback &cb)
+{
+    closeHandler_ = cb;
+}
+
+/*
+ * 处理请求，选择对应事件执行
  * 
  */
 void Channel::HandleEvent()

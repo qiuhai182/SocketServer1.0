@@ -1,5 +1,5 @@
 
-// 服务器socket类，封装socket描述符及相关的初始化操作
+// socket类，封装socket描述符及相关函数
 
 #pragma once
 
@@ -49,7 +49,7 @@ Socket::~Socket()
 }
 
 /*
- * 
+ * 设置地址重用，用于服务重启
  * 
  */
 void Socket::SetReuseAddr()
@@ -59,19 +59,17 @@ void Socket::SetReuseAddr()
 }
 
 /*
- * 
+ * 设置非阻塞IO
  * 
  */
 void Socket::SetNonblocking()
 {
-    // 获取属性
     int opts = fcntl(_socketFd, F_GETFL);
     if (opts < 0)
     {
         perror("fcntl(_socketFd,GETFL)");
         exit(1);
     }
-    // 或操作设置非阻塞
     if (fcntl(_socketFd, F_SETFL, opts | O_NONBLOCK) < 0)
     {
         perror("fcntl(_socketFd,SETFL,opts)");
@@ -80,7 +78,7 @@ void Socket::SetNonblocking()
 }
 
 /*
- * 
+ * 套接字绑定IP和端口
  * 
  */
 bool Socket::BindAddress(int serverPort)
@@ -101,7 +99,7 @@ bool Socket::BindAddress(int serverPort)
 }
 
 /*
- * 
+ * 套接字监听IP和端口
  * 
  */
 bool Socket::Listen()
@@ -116,7 +114,7 @@ bool Socket::Listen()
 }
 
 /*
- * 
+ * 套接字响应IP连接
  * 
  */
 int Socket::Accept(struct sockaddr_in &clientAddr)
@@ -131,7 +129,7 @@ int Socket::Accept(struct sockaddr_in &clientAddr)
 }
 
 /*
- * 
+ * 关闭套接字连接
  * 
  */
 bool Socket::Close()

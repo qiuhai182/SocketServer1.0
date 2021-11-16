@@ -52,7 +52,7 @@ Timer::~Timer()
 }
 
 /*
- * 
+ * 启动定时器
  * 
  */
 void Timer::Start()
@@ -61,7 +61,7 @@ void Timer::Start()
 }
 
 /*
- * 
+ * 停止定时器
  * 
  */
 void Timer::Stop()
@@ -70,7 +70,7 @@ void Timer::Stop()
 }
 
 /*
- * 
+ * 更新定时器信息
  * 
  */
 void Timer::Adjust(int timeOut, Timer::TimerType timerType, const CallBack &timerCallBack)

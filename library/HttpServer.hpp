@@ -1,4 +1,6 @@
 
+// http网络服务类
+
 #pragma once
 
 #include <string>
@@ -30,7 +32,6 @@ private:
     void HandleSendComplete(const spTcpConnection &sptcpconn);
     void HandleClose(const spTcpConnection &sptcpconn);
     void HandleError(const spTcpConnection &sptcpconn);
-    // bugfix:声明顺序调整，map、mutex放到最后析构
     std::map<spTcpConnection, std::shared_ptr<HttpSession>> httpSessionnList_;
     std::map<spTcpConnection, spTimer> timerList_;
     std::mutex mutex_;
@@ -56,7 +57,7 @@ HttpServer::~HttpServer()
 }
 
 /*
- * 
+ * 处理新连接
  * 
  */
 void HttpServer::HandleNewConnection(const spTcpConnection &sptcpconn)
@@ -72,7 +73,7 @@ void HttpServer::HandleNewConnection(const spTcpConnection &sptcpconn)
 }
 
 /*
- * 
+ * 处理收到的请求
  * 
  */
 void HttpServer::HandleMessage(const spTcpConnection &sptcpconn, std::string &msg)
@@ -84,10 +85,12 @@ void HttpServer::HandleMessage(const spTcpConnection &sptcpconn, std::string &ms
         sphttpsession = httpSessionnList_[sptcpconn];
         sptimer = timerList_[sptcpconn];
     }
+    // 定时关闭连接
     sptimer->Adjust(5000, Timer::TimerType::TIMER_ONCE, std::bind(&TcpConnection::Shutdown, sptcpconn));
     std::string responsecontext;
     if (threadpool_.GetThreadNum() > 0)
     {
+        // 已开启线程池，解析http请求，设置异步处理标志，线程池taskQueue_添加任务
         HttpRequestContext httprequestcontext;
         bool result = sphttpsession->ParseHttpRequest(msg, httprequestcontext);
         if (result == false)
@@ -111,7 +114,7 @@ void HttpServer::HandleMessage(const spTcpConnection &sptcpconn, std::string &ms
     }
     else
     {
-        // 没有开启业务线程池，业务计算直接在IO线程执行
+        // 没有开启线程池
         HttpRequestContext httprequestcontext;
         bool result = sphttpsession->ParseHttpRequest(msg, httprequestcontext);
         if (result == false)
@@ -124,14 +127,13 @@ void HttpServer::HandleMessage(const spTcpConnection &sptcpconn, std::string &ms
         sptcpconn->Send(responsecontext);
         if (!sphttpsession->KeepAlive())
         {
-            // 短连接，关闭连接
             // sptcpconn->HandleClose();
         }
     }
 }
 
 /*
- * 
+ * 数据发送客户端完毕
  * 
  */
 void HttpServer::HandleSendComplete(const spTcpConnection &sptcpconn)
@@ -139,7 +141,7 @@ void HttpServer::HandleSendComplete(const spTcpConnection &sptcpconn)
 }
 
 /*
- * 
+ * 连接断开
  * 
  */
 void HttpServer::HandleClose(const spTcpConnection &sptcpconn)
@@ -152,7 +154,7 @@ void HttpServer::HandleClose(const spTcpConnection &sptcpconn)
 }
 
 /*
- * 
+ * 连接出错
  * 
  */
 void HttpServer::HandleError(const spTcpConnection &sptcpconn)
@@ -165,7 +167,7 @@ void HttpServer::HandleError(const spTcpConnection &sptcpconn)
 }
 
 /*
- * 
+ * 启动http服务
  * 
  */
 void HttpServer::Start()

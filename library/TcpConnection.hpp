@@ -13,7 +13,6 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <errno.h>
-#include <unistd.h>
 #include "Channel.hpp"
 #include "EventLoop.hpp"
 
@@ -44,31 +43,12 @@ public:
     void HandleWrite();
     void HandleError();
     void HandleClose();
-    void SetMessaeCallback(const MessageCallback &cb)
-    {
-        messagecallback_ = cb;
-    }
-    void SetSendCompleteCallback(const Callback &cb)
-    {
-        sendcompletecallback_ = cb;
-    }
-    void SetCloseCallback(const Callback &cb)
-    {
-        closecallback_ = cb;
-    }
-    void SetErrorCallback(const Callback &cb)
-    {
-        errorcallback_ = cb;
-    }
-    void SetConnectionCleanUp(const Callback &cb)
-    {
-        connectioncleanup_ = cb;
-    }
-    void SetAsyncProcessing(const bool asyncProcessing)
-    {
-        // 异步处理
-        asyncProcessing_ = asyncProcessing;
-    }
+    void SetMessaeCallback(const MessageCallback &cb);
+    void SetSendCompleteCallback(const Callback &cb);
+    void SetCloseCallback(const Callback &cb);
+    void SetErrorCallback(const Callback &cb);
+    void SetConnectionCleanUp(const Callback &cb);
+    void SetAsyncProcessing(const bool asyncProcessing);
 
 private:
     EventLoop *loop_;
@@ -118,8 +98,8 @@ TcpConnection::~TcpConnection()
 }
 
 /*
- * 
- * 
+ * EventLoop添加Channel对应连接事件
+ * 实际执行EventLoop下Poller监听Channel新连接
  */
 void TcpConnection::AddChannelToLoop()
 {
@@ -132,7 +112,7 @@ void TcpConnection::AddChannelToLoop()
 }
 
 /*
- * 
+ * 发送信息函数
  * 
  */
 void TcpConnection::Send(const std::string &s)
@@ -152,7 +132,7 @@ void TcpConnection::Send(const std::string &s)
 }
 
 /*
- * 
+ * 发送任务函数，由EventLoop调用
  * 
  */
 void TcpConnection::SendInLoop()
@@ -177,7 +157,6 @@ void TcpConnection::SendInLoop()
             // 数据已发完
             spChannel_->SetEvents(events & (~EPOLLOUT));
             sendcompletecallback_(shared_from_this());
-            // 20190217
             if (halfClose_)
                 HandleClose();
         }
@@ -193,7 +172,7 @@ void TcpConnection::SendInLoop()
 }
 
 /*
- * 
+ * 关闭当前连接
  * 
  */
 void TcpConnection::Shutdown()
@@ -210,8 +189,8 @@ void TcpConnection::Shutdown()
 }
 
 /*
- * 
- * 
+ * 调用绑定的closecallback_函数
+ * 向EventLoop添加connectioncleanup_函数任务
  */
 void TcpConnection::ShutdownInLoop()
 {
@@ -219,14 +198,13 @@ void TcpConnection::ShutdownInLoop()
     {
         return;
     }
-    std::cout << "shutdown" << std::endl;
     closecallback_(shared_from_this());
     loop_->AddTask(std::bind(connectioncleanup_, shared_from_this()));
     disConnected_ = true;
 }
 
 /*
- * 
+ * 接收客户端发送的数据，调用绑定的messagecallback_函数
  * 
  */
 void TcpConnection::HandleRead()
@@ -249,7 +227,7 @@ void TcpConnection::HandleRead()
 }
 
 /*
- * 
+ * 向客户端发送数据
  * 
  */
 void TcpConnection::HandleWrite()
@@ -285,7 +263,7 @@ void TcpConnection::HandleWrite()
 }
 
 /*
- * 
+ * 处理连接错误
  * 
  */
 void TcpConnection::HandleError()
@@ -303,8 +281,8 @@ void TcpConnection::HandleError()
 }
 
 /*
- * 对端关闭连接,有两种，一种close，另一种是shutdown(半关闭)，但服务器并不清楚是哪一种，只能按照最保险的方式来，即发完数据再close
- * 
+ * 对端关闭连接,有两种，一种close，另一种是shutdown(半关闭)
+ * 但服务器并不清楚是哪一种，只能按照最保险的方式来，即发完数据再close 
  */
 void TcpConnection::HandleClose()
 {
@@ -314,8 +292,6 @@ void TcpConnection::HandleClose()
     // task添加
     // loop_->AddTask(connectioncleanup_);
     // closecallback_(this);
-
-    // 20190217 优雅关闭，发完数据再关闭
     if (disConnected_)
     {
         return;
@@ -339,7 +315,61 @@ void TcpConnection::HandleClose()
 }
 
 /*
+ * 设置连接处理函数
  * 
+ */
+void TcpConnection::SetMessaeCallback(const MessageCallback &cb)
+{
+    messagecallback_ = cb;
+}
+
+/*
+ * 设置数据发送完毕处理函数
+ * 
+ */
+void TcpConnection::SetSendCompleteCallback(const Callback &cb)
+{
+    sendcompletecallback_ = cb;
+}
+
+/*
+ * 设置关闭处理函数
+ * 
+ */
+void TcpConnection::SetCloseCallback(const Callback &cb)
+{
+    closecallback_ = cb;
+}
+
+/*
+ * 设置出错处理函数
+ * 
+ */
+void TcpConnection::SetErrorCallback(const Callback &cb)
+{
+    errorcallback_ = cb;
+}
+
+/*
+ * 设置连接清空函数
+ * 
+ */
+void TcpConnection::SetConnectionCleanUp(const Callback &cb)
+{
+    connectioncleanup_ = cb;
+}
+
+/*
+ * 设置异步处理标志
+ * 
+ */
+void TcpConnection::SetAsyncProcessing(const bool asyncProcessing)
+{
+    asyncProcessing_ = asyncProcessing;
+}
+
+/*
+ * 读取客户端数据
  * 
  */
 int recvn(int fd, std::string &bufferin)
@@ -389,7 +419,7 @@ int recvn(int fd, std::string &bufferin)
 }
 
 /*
- * 
+ * 发送数据到客户端
  * 
  */
 int sendn(int fd, std::string &bufferout)

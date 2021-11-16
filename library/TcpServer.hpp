@@ -1,4 +1,6 @@
 
+// tcpServer类，实现基于socket的网络服务，是其他一切网络服务的基础
+
 #pragma once
 
 #include <functional>
@@ -33,26 +35,11 @@ public:
     TcpServer(EventLoop *loop, const int port, const int threadnum = 0);
     ~TcpServer();
     void Start();
-    void SetNewConnCallback(const Callback &cb)
-    {
-        newConnectionCallback_ = cb;
-    }
-    void SetMessageCallback(const MessageCallback &cb)
-    {
-        messageCallback_ = cb;
-    }
-    void SetSendCompleteCallback(const Callback &cb)
-    {
-        sendCompleteCallback_ = cb;
-    }
-    void SetCloseCallback(const Callback &cb)
-    {
-        closeCallback_ = cb;
-    }
-    void SetErrorCallback(const Callback &cb)
-    {
-        errorCallback_ = cb;
-    }
+    void SetNewConnCallback(const Callback &cb);
+    void SetMessageCallback(const MessageCallback &cb);
+    void SetSendCompleteCallback(const Callback &cb);
+    void SetCloseCallback(const Callback &cb);
+    void SetErrorCallback(const Callback &cb);
 
 private:
     Socket tcpServerSocket_;
@@ -93,7 +80,7 @@ TcpServer::~TcpServer()
 }
 
 /*
- * 
+ * 启动tcp服务
  * 
  */
 void TcpServer::Start()
@@ -104,7 +91,52 @@ void TcpServer::Start()
 }
 
 /*
+ * 设置新连接处理函数
  * 
+ */
+void TcpServer::SetNewConnCallback(const Callback &cb)
+{
+    newConnectionCallback_ = cb;
+}
+
+/*
+ * 设置消息处理函数
+ * 
+ */
+void TcpServer::SetMessageCallback(const MessageCallback &cb)
+{
+    messageCallback_ = cb;
+}
+
+/*
+ * 设置数据发送完毕处理函数
+ * 
+ */
+void TcpServer::SetSendCompleteCallback(const Callback &cb)
+{
+    sendCompleteCallback_ = cb;
+}
+
+/*
+ * 设置连接关闭处理函数
+ * 
+ */
+void TcpServer::SetCloseCallback(const Callback &cb)
+{
+    closeCallback_ = cb;
+}
+
+/*
+ * 设置出错处理函数
+ * 
+ */
+void TcpServer::SetErrorCallback(const Callback &cb)
+{
+    errorCallback_ = cb;
+}
+
+/*
+ * 处理新连接，调用绑定的newConnectionCallback_函数
  * 
  */
 void TcpServer::OnNewConnection()
@@ -140,7 +172,7 @@ void TcpServer::OnNewConnection()
 }
 
 /*
- * 
+ * 处理连接错误，关闭套接字
  * 
  */
 void TcpServer::OnConnectionError()
@@ -150,7 +182,7 @@ void TcpServer::OnConnectionError()
 }
 
 /*
- * 连接清理,bugfix:这里应该由主loop来执行，投递回主线程删除 OR 多线程加锁删除
+ * 连接清理，这里应该由EventLoop来执行，投递回主线程删除 OR 多线程加锁删除
  * 
  */
 void TcpServer::RemoveConnection(std::shared_ptr<TcpConnection> sptcpconnection)
@@ -161,7 +193,7 @@ void TcpServer::RemoveConnection(std::shared_ptr<TcpConnection> sptcpconnection)
 }
 
 /*
- * 
+ * 设置非阻塞IO
  * 
  */
 void Setnonblocking(int fd)
