@@ -21,50 +21,48 @@
 
 int recvn(int fd, std::string &bufferin);
 int sendn(int fd, std::string &bufferout);
-
 class TcpConnection : public std::enable_shared_from_this<TcpConnection>
 { // 允许安全使用shared_ptr
 public:
-    typedef std::shared_ptr<TcpConnection> spTcpConnection;
-    typedef std::function<void(const spTcpConnection &)> Callback;
-    typedef std::function<void(const spTcpConnection &, std::string &)> MessageCallback;
+    typedef std::shared_ptr<TcpConnection> spTcpConnection; // 指向TcpConnection的智能指针
+    typedef std::function<void(const spTcpConnection &)> Callback; // 回调函数
+    typedef std::function<void(const spTcpConnection &, std::string &)> MessageCallback;    // 信息处理函数
     TcpConnection(EventLoop *loop, int fd, const struct sockaddr_in &clientaddr);
     ~TcpConnection();
-    int fd() const { return fd_; }
-    EventLoop *GetLoop() const { return loop_; }
-    void AddChannelToLoop();
-    void Send(const std::string &s);
-    void Shutdown();
-    void SendInLoop();
-    void ShutdownInLoop();
-    void HandleRead();
-    void HandleWrite();
-    void HandleError();
-    void HandleClose();
-    void SetMessaeCallback(const MessageCallback &cb);
-    void SetSendCompleteCallback(const Callback &cb);
-    void SetCloseCallback(const Callback &cb);
-    void SetErrorCallback(const Callback &cb);
-    void SetConnectionCleanUp(const Callback &cb);
-    void SetAsyncProcessing(const bool asyncProcessing);
+    int fd() const { return fd_; }  // 获取套接字描述符
+    EventLoop *GetLoop() const { return loop_; } // 获取事件池指针
+    void Send(const std::string &s);    // 发送信息函数，指定EventLoop执行
+    void SendInLoop();          // 发送信息函数，由EventLoop执行
+    void AddChannelToLoop();    // EventLoop添加监听Channel
+    void Shutdown();            // 关闭当前连接，指定EventLoop执行
+    void ShutdownInLoop();      // 关闭当前连接，由EventLoop执行
+    void HandleRead();          // 接收客户端发送的数据，调用绑定的messagecallback_函数
+    void HandleWrite();         // 向客户端发送数据
+    void HandleError();         // 处理连接错误
+    void HandleClose();         // 处理客户端连接关闭
+    void SetMessaeCallback(const MessageCallback &cb);  // 设置连接处理函数
+    void SetSendCompleteCallback(const Callback &cb);   // 设置数据发送完毕处理函数
+    void SetCloseCallback(const Callback &cb);          // 设置关闭处理函数
+    void SetErrorCallback(const Callback &cb);          // 设置出错处理函数
+    void SetConnectionCleanUp(const Callback &cb);      // 设置连接清空函数
+    void SetAsyncProcessing(const bool asyncProcessing);// 设置异步处理标志
 
 private:
-    EventLoop *loop_;
-    std::unique_ptr<Channel> spChannel_;
-    int fd_;
-    struct sockaddr_in clientAddr_;
-    bool disConnected_;
-    // 半关闭标志位
-    bool halfClose_;
-    // 异步调用标志位,当工作任务交给线程池时，置为true，任务完成回调时置为false
-    bool asyncProcessing_;
-    std::string bufferIn_;
-    std::string bufferOut_;
-    MessageCallback messagecallback_;
-    Callback sendcompletecallback_;
-    Callback closecallback_;
-    Callback errorcallback_;
-    Callback connectioncleanup_;
+    EventLoop *loop_;   // 事件池
+    std::unique_ptr<Channel> spChannel_;    // 连接Channel实例
+    int fd_;    // 连接套接字描述符
+    struct sockaddr_in clientAddr_; // 连接信息结构体
+    bool disConnected_;     // 连接断开标志位
+    bool halfClose_;        // 半关闭标志位
+    bool asyncProcessing_;  // 异步调用标志位，当工作任务交给线程池时，置为true，任务完成回调时置为false
+    std::string bufferIn_;  // 
+    std::string bufferOut_; // 
+    MessageCallback messagecallback_;   // 
+    Callback sendcompletecallback_;     // 
+    Callback closecallback_;            // 
+    Callback errorcallback_;            // 
+    Callback connectioncleanup_;        // 
+
 };
 
 TcpConnection::TcpConnection(EventLoop *loop, int fd, const struct sockaddr_in &clientaddr)
@@ -90,14 +88,14 @@ TcpConnection::TcpConnection(EventLoop *loop, int fd, const struct sockaddr_in &
 TcpConnection::~TcpConnection()
 {
     // 多线程下，加入loop的任务队列？不用，因为已经在当前loop线程
-    // 移除事件,析构成员变量
+    // 移除事件，析构成员变量
     loop_->RemoveChannelToPoller(spChannel_.get());
     close(fd_);
 }
 
 /*
- * EventLoop添加Channel对应连接事件
- * 实际执行EventLoop下Poller监听Channel新连接
+ * EventLoop添加监听Channel
+ * 实际由EventLoop下Poller添加新监听连接
  */
 void TcpConnection::AddChannelToLoop()
 {
@@ -110,7 +108,7 @@ void TcpConnection::AddChannelToLoop()
 }
 
 /*
- * 发送信息函数
+ * 发送信息函数，指定EventLoop执行
  * 
  */
 void TcpConnection::Send(const std::string &s)
@@ -125,12 +123,13 @@ void TcpConnection::Send(const std::string &s)
     {
         // 当前线程为新开线程，异步调用结束
         asyncProcessing_ = false;
-        loop_->AddTask(std::bind(&TcpConnection::SendInLoop, shared_from_this())); // 跨线程调用,加入IO线程的任务队列，唤醒
+        // 跨线程调用,加入IO线程的任务队列，唤醒
+        loop_->AddTask(std::bind(&TcpConnection::SendInLoop, shared_from_this())); 
     }
 }
 
 /*
- * 发送任务函数，由EventLoop调用
+ * 发送信息函数，由EventLoop执行
  * 
  */
 void TcpConnection::SendInLoop()
@@ -170,7 +169,7 @@ void TcpConnection::SendInLoop()
 }
 
 /*
- * 关闭当前连接
+ * 关闭当前连接，指定EventLoop执行
  * 
  */
 void TcpConnection::Shutdown()
@@ -181,12 +180,13 @@ void TcpConnection::Shutdown()
     }
     else
     {
-        // 不是IO线程，则是跨线程调用,加入IO线程的任务队列，唤醒
+        // 不是IO线程，则是跨线程调用，加入IO线程的任务队列，唤醒
         loop_->AddTask(std::bind(&TcpConnection::ShutdownInLoop, shared_from_this()));
     }
 }
 
 /*
+ * 关闭当前连接，由EventLoop执行
  * 调用绑定的closecallback_函数
  * 向EventLoop添加connectioncleanup_函数任务
  */
@@ -279,6 +279,7 @@ void TcpConnection::HandleError()
 }
 
 /*
+ * 处理客户端连接关闭
  * 对端关闭连接,有两种，一种close，另一种是shutdown(半关闭)
  * 但服务器并不清楚是哪一种，只能按照最保险的方式来，即发完数据再close 
  */

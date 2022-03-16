@@ -23,7 +23,7 @@ public:
     typedef std::vector<Channel *> ChannelList;
     EventLoop();
     ~EventLoop();
-    void loop();
+    void loop();    // 循环监听事件并处理，以及执行functorList_上的任务
     void AddChannelToPoller(Channel *pchannel);     // Poller监听Channel对应新连接
     void RemoveChannelToPoller(Channel *pchannel);  // Poller移除Channel对应连接监听
     void UpdateChannelToPoller(Channel *pchannel);  // Poller更改Channel对应连接事件信息
@@ -36,12 +36,12 @@ public:
     void ExecuteTask(); // 执行functorList_里的所有任务函数
 
 private:
+    std::mutex mutex_;
     std::vector<Functor> functorList_;  // 任务列表
     ChannelList activeChannelList_;     // 连接列表，存储当前批次事件的Channel实例
-    Poller poller_;
-    bool quit_;
+    Poller poller_;                     // epoll封装类实例
+    bool quit_;                         // 停止循环监听事件标志位
     std::thread::id tid_;               // 当前线程id
-    std::mutex mutex_;
     int wakeUpFd_;                      // 共享内存fd，用于唤醒线程
     Channel wakeUpChannel_;
 

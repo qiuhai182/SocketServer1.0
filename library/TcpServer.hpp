@@ -10,14 +10,14 @@
 #include <map>
 #include <mutex>
 #include <iostream>
-#include <stdio.h>
+#include <cstdio>
+#include <memory>
+#include <cstdlib>
 #include <unistd.h>
 #include <fcntl.h>
-#include <stdlib.h>
 #include <sys/epoll.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#include <memory>
 #include "Socket.hpp"
 #include "Channel.hpp"
 #include "EventLoop.hpp"
@@ -152,6 +152,7 @@ void TcpServer::OnNewConnection()
                   << ":" << ntohs(clientaddr.sin_port) << std::endl;
         if (++connCount_ >= MAXCONNECTION)
         {
+            // 连接超量
             close(clientfd);
             continue;
         }
