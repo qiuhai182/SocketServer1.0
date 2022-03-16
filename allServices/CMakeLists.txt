@@ -49,7 +49,8 @@ protobuf_generate_cpp(PROTO_SRC PROTO_HEADER
 SET(CMAKE_BUILD_TYPE "Debug")
 
 add_executable(server server.cpp ${PROTO_HEADER} ${PROTO_SRC} ${SRC_DIRS_LIBRARY} ${SRC_DIRS_SERVICE})
-target_link_libraries(server ${BRPC_LIB} ${PROTOBUF_LIBRARIES} mysqlclient hiredis pthread)
+# target_link_libraries(server ${BRPC_LIB} ${PROTOBUF_LIBRARIES} mysqlclient hiredis pthread)
+target_link_libraries(server ${BRPC_LIB} ${PROTOBUF_LIBRARIES} mysqlclient pthread)
 add_definitions(-w) # 忽略编译警告
 
 

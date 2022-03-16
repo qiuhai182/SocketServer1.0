@@ -11,17 +11,18 @@
 
 class EventLoopThreadPool
 {
-private:
-    std::vector<EventLoopThread*> eventLoopThreadList_;
-    EventLoop *mainLoop_;
-    int threadNum_;
-    int index_; // 用于轮询分发的索引
-
 public:
     EventLoopThreadPool(EventLoop *mainloop, int threadnum = 0);
     ~EventLoopThreadPool();
-    void Start();
-    EventLoop* GetNextLoop();
+    void Start();   // 在所有线程类实例EventLoopThread内创建真实的子线程thread对象
+    EventLoop* GetNextLoop();   // 轮询分发EventLoop指针
+
+private:
+    std::vector<EventLoopThread*> eventLoopThreadList_; // 任务线程实例列表
+    EventLoop *mainLoop_;   // 事件池主逻辑控制实例
+    int threadNum_; // 任务线程数量
+    int index_;     // 用于轮询分发的索引，根据此索引向外部提供
+                    // 索引指向的任务线程类实例EventLoopThread所创建的EventLoop对象指针
 
 };
 
@@ -31,6 +32,7 @@ EventLoopThreadPool::EventLoopThreadPool(EventLoop *mainloop, int threadNum)
       eventLoopThreadList_(),
       index_(0)
 {
+    // 创建threadNum个任务线程
     for (int i = 0; i < threadNum_; ++i)
     {
         EventLoopThread *preLoopThread = new EventLoopThread;
@@ -40,15 +42,17 @@ EventLoopThreadPool::EventLoopThreadPool(EventLoop *mainloop, int threadNum)
 
 EventLoopThreadPool::~EventLoopThreadPool()
 {
+    // 删除每一个任务线程实例，析构时同步启动任务线程
     for (int i = 0; i < threadNum_; ++i)
     {
         delete eventLoopThreadList_[i];
     }
+    // 清空eventLoopThreadList_列表内所有已失效的子线程实例对象
     eventLoopThreadList_.clear();
 }
 
 /*
- * 
+ * 在所有线程类实例EventLoopThread内创建真实的子线程thread对象
  * 
  */
 void EventLoopThreadPool::Start()
@@ -63,7 +67,7 @@ void EventLoopThreadPool::Start()
 }
 
 /*
- * 
+ * 轮询分发EventLoop指针
  * 
  */
 EventLoop *EventLoopThreadPool::GetNextLoop()
@@ -79,3 +83,6 @@ EventLoop *EventLoopThreadPool::GetNextLoop()
         return mainLoop_;
     }
 }
+
+
+

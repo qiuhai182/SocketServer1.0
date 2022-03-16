@@ -1,5 +1,6 @@
 
-// 事件处理主逻辑，IO复用流程的抽象，等待、处理事件
+// 事件处理主逻辑：
+//  IO复用流程的抽象，等待、处理事件
 
 #pragma once
 
@@ -23,31 +24,32 @@ public:
     EventLoop();
     ~EventLoop();
     void loop();
-    void AddChannelToPoller(Channel *pchannel);
-    void RemoveChannelToPoller(Channel *pchannel);
-    void UpdateChannelToPoller(Channel *pchannel);
-    void Quit();
-    std::thread::id GetThreadId() const;
-    void AddTask(Functor functor);
-    void WakeUp();
-    void HandleRead();
-    void HandleError();
-    void ExecuteTask();
+    void AddChannelToPoller(Channel *pchannel);     // Poller监听Channel对应新连接
+    void RemoveChannelToPoller(Channel *pchannel);  // Poller移除Channel对应连接监听
+    void UpdateChannelToPoller(Channel *pchannel);  // Poller更改Channel对应连接事件信息
+    void Quit();    // 停止运行EventLoop事件循环
+    std::thread::id GetThreadId() const;    // 获取EventLoop所在线程ID
+    void AddTask(Functor functor);  // 添加任务到事件列表functorList_，唤醒工作线程
+    void WakeUp();      // 唤醒工作线程
+    void HandleRead();  // 唤醒线程的读取数据函数
+    void HandleError(); // 唤醒线程的错误处理函数
+    void ExecuteTask(); // 执行functorList_里的所有任务函数
 
 private:
-    std::vector<Functor> functorList_;
-    ChannelList activeChannelList_;
+    std::vector<Functor> functorList_;  // 任务列表
+    ChannelList activeChannelList_;     // 连接列表，存储当前批次事件的Channel实例
     Poller poller_;
     bool quit_;
-    std::thread::id tid_;
+    std::thread::id tid_;               // 当前线程id
     std::mutex mutex_;
-    int wakeUpFd_;
+    int wakeUpFd_;                      // 共享内存fd，用于唤醒线程
     Channel wakeUpChannel_;
+
 };
 
 /*
- * eventfd函数创建文件描述符
- * 进程/线程间共享同一个内核维护uint值存取，支持read、write
+ * eventfd函数创建文件描述符，用于进程/线程间通信
+ * 共享同一个内核维护uint值存取，支持read、write
  */
 int CreateEventFd()
 {
@@ -83,7 +85,7 @@ EventLoop::~EventLoop()
 }
 
 /*
- * 唤醒线程读取数据函数
+ * 唤醒线程的读取数据函数
  * 
  */
 void EventLoop::HandleRead()
@@ -93,7 +95,7 @@ void EventLoop::HandleRead()
 }
 
 /*
- * 唤醒线程错误处理函数
+ * 唤醒线程的错误处理函数
  * 
  */
 void EventLoop::HandleError()
@@ -146,8 +148,8 @@ std::thread::id EventLoop::GetThreadId() const
 }
 
 /*
- * EventLoop添加任务函数到functorList_
- * 唤醒工作线程
+ * EventLoop添加任务到functorList_
+ * 并唤醒工作线程
  */
 void EventLoop::AddTask(Functor functor)
 {
@@ -159,7 +161,9 @@ void EventLoop::AddTask(Functor functor)
 }
 
 /*
- * 唤醒线程，实则为向eventfd生成的文件描述符内写入唤醒标志值
+ * 唤醒线程
+ * 实则为向eventfd生成的文件描述符wakeUpFd_
+ * 写入唤醒标志值
  * 
  */
 void EventLoop::WakeUp()
@@ -169,9 +173,37 @@ void EventLoop::WakeUp()
 }
 
 /*
- * EventLoop循环函数，循环调用Poller封装poll函数，获取一批次新连接
- * 调用每一个连接对应的Channel的HandleEvent函数，执行动态绑定的处理函数
  * 执行functorList_里的所有任务函数
+ * 
+ */
+void EventLoop::ExecuteTask()
+{
+    //  std::lock_guard <std::mutex> lock(mutex_);
+    //  for(Functor &functor : functorList_)
+    //  {
+    //      functor();// 在加锁后执行任务，调用sendinloop，再调用close，执行添加任务，这样functorList_就会修改
+    //  }
+    //  functorList_.clear();
+    // 拷贝任务列表并使任务列表置空
+    std::vector<Functor> functorlists;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        functorlists.swap(functorList_);
+    }
+    // 执行拷贝的所有任务
+    for (Functor &functor : functorlists)
+    {
+        functor();
+    }
+    functorlists.clear();
+}
+
+/*
+ * EventLoop事件池循环监听并处理函数
+ * 循环调用Poller封装poll函数，获取一批次新连接
+ * 调用每一个连接对应的Channel的HandleEvent函数，执行动态绑定的处理函数
+ * 并执行functorList_里的所有任务
+ * 
  */
 void EventLoop::loop()
 {
@@ -192,26 +224,5 @@ void EventLoop::loop()
     }
 }
 
-/*
- * 执行functorList_里的所有任务函数
- * 
- */
-void EventLoop::ExecuteTask()
-{
-    //  std::lock_guard <std::mutex> lock(mutex_);
-    //  for(Functor &functor : functorList_)
-    //  {
-    //      functor();// 在加锁后执行任务，调用sendinloop，再调用close，执行添加任务，这样functorList_就会修改
-    //  }
-    //  functorList_.clear();
-    std::vector<Functor> functorlists;
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        functorlists.swap(functorList_);
-    }
-    for (Functor &functor : functorlists)
-    {
-        functor();
-    }
-    functorlists.clear();
-}
+
+

@@ -4,34 +4,48 @@
 #include "../library/EchoServer.hpp"
 #include "../library/HttpServer.hpp"
 
-EventLoop *lp;
+EventLoop *lp; // 事件池指针
 
-static void sighandler1( int sig_no )   
-{   
-      exit(0);   
+/*
+ * 信号处理函数，SIGUSR1->退出服务器程序
+ *
+ */
+static void sighandler1(int sig_no)
+{
+    exit(0);
 }
 
-static void sighandler2( int sig_no )   
-{   
+/*
+ * 信号处理函数，SIGUSR2->关闭服务
+ *
+ */
+static void sighandler2(int sig_no)
+{
     lp->Quit();
-}   
+}
 
+/*
+ * main函数，服务程序入口函数
+ *
+ */
 int main(int argc, char *argv[])
 {
     signal(SIGUSR1, sighandler1);
     signal(SIGUSR2, sighandler2);
-    signal(SIGINT, sighandler2);
-    signal(SIGPIPE, SIG_IGN);  //SIG_IGN,系统函数，忽略信号的处理程序
-    
-    int port = 8000;
-    int iothreadnum = 4;
-    int workerthreadnum = 4;
-    if(argc == 4)
+    signal(SIGINT, sighandler2); // SIG_IGN = Ctrl+C
+    signal(SIGPIPE, SIG_IGN);    // 忽略信号的处理程序
+
+    // 默认初始化参数
+    int port = 8000;         // 服务端口
+    int iothreadnum = 4;     // IO线程数
+    int workerthreadnum = 4; // 工作线程数
+    if (argc == 4)
     {
+        // 启动初始化参数
         port = atoi(argv[1]);
         iothreadnum = atoi(argv[2]);
         workerthreadnum = atoi(argv[3]);
-    }   
+    }
 
     EventLoop loop;
     HttpServer httpServer(&loop, port, iothreadnum, workerthreadnum);
@@ -40,7 +54,7 @@ int main(int argc, char *argv[])
     {
         loop.loop();
     }
-    catch (std::bad_alloc& ba)
+    catch (std::bad_alloc &ba)
     {
         std::cerr << "bad_alloc caught in ThreadPool::ThreadFunc task: " << ba.what() << '\n';
     }

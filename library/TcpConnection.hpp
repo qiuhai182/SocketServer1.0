@@ -1,5 +1,6 @@
 
-// TcpConnection类，客户端连接的抽象表示
+// TcpConnection类：
+//  客户端连接的抽象表示
 
 #pragma once
 
@@ -8,11 +9,11 @@
 #include <string>
 #include <thread>
 #include <memory>
+#include <cerrno>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#include <errno.h>
 #include "Channel.hpp"
 #include "EventLoop.hpp"
 
@@ -21,18 +22,15 @@
 int recvn(int fd, std::string &bufferin);
 int sendn(int fd, std::string &bufferout);
 
-class TcpConnection : public std::enable_shared_from_this<TcpConnection> // 允许安全使用shared_ptr
-{
+class TcpConnection : public std::enable_shared_from_this<TcpConnection>
+{ // 允许安全使用shared_ptr
 public:
     typedef std::shared_ptr<TcpConnection> spTcpConnection;
     typedef std::function<void(const spTcpConnection &)> Callback;
     typedef std::function<void(const spTcpConnection &, std::string &)> MessageCallback;
     TcpConnection(EventLoop *loop, int fd, const struct sockaddr_in &clientaddr);
     ~TcpConnection();
-    int fd() const
-    {
-        return fd_;
-    }
+    int fd() const { return fd_; }
     EventLoop *GetLoop() const { return loop_; }
     void AddChannelToLoop();
     void Send(const std::string &s);

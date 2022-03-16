@@ -1,5 +1,7 @@
 
-// tcpServer类，实现基于socket的网络服务，是其他一切网络服务的基础
+// tcpServer类：
+//  实现基于socket的网络服务
+//  是其他一切网络服务的基础服务提供类
 
 #pragma once
 
@@ -35,33 +37,34 @@ public:
     TcpServer(EventLoop *loop, const int port, const int threadnum = 0);
     ~TcpServer();
     void Start();
-    void SetNewConnCallback(const Callback &cb);
-    void SetMessageCallback(const MessageCallback &cb);
-    void SetSendCompleteCallback(const Callback &cb);
-    void SetCloseCallback(const Callback &cb);
-    void SetErrorCallback(const Callback &cb);
+    void SetNewConnCallback(const Callback &cb);            // 设置新连接处理函数
+    void SetMessageCallback(const MessageCallback &cb);     // 设置消息处理函数
+    void SetSendCompleteCallback(const Callback &cb);       // 设置数据发送完毕处理函数
+    void SetCloseCallback(const Callback &cb);              // 设置连接关闭处理函数
+    void SetErrorCallback(const Callback &cb);              // 设置出错处理函数
 
 private:
-    Socket tcpServerSocket_;
-    EventLoop *loop_;
-    Channel tcpServerChannel_;
-    int connCount_;
     std::mutex mutex_;
-    EventLoopThreadPool eventLoopThreadPool;
-    std::map<int, std::shared_ptr<TcpConnection>> tcpConnList_;
-    Callback newConnectionCallback_;
-    MessageCallback messageCallback_;
-    Callback sendCompleteCallback_;
-    Callback closeCallback_;
-    Callback errorCallback_;
-    void OnNewConnection();
-    void OnConnectionError();
-    void RemoveConnection(const std::shared_ptr<TcpConnection> sptcpconnection);
+    Socket tcpServerSocket_;        // 套接字描述符
+    Channel tcpServerChannel_;      // 连接Channel实例
+    EventLoop *mainLoop_;           // 事件池主逻辑控制实例
+    int connCount_;                 // 连接计数
+    EventLoopThreadPool eventLoopThreadPool;    // 多线程事件池
+    std::map<int, std::shared_ptr<TcpConnection>> tcpConnList_; // 
+    Callback newConnectionCallback_;    // 新连接处理回调函数
+    MessageCallback messageCallback_;   // 消息处理回调函数
+    Callback sendCompleteCallback_;     // 数据发送完毕处理回调函数
+    Callback closeCallback_;            // 连接关闭处理回调函数
+    Callback errorCallback_;            // 出错处理回调函数
+    void OnNewConnection();             // 处理新连接，调用绑定的newConnectionCallback_回调函数
+    void OnConnectionError();           // 处理连接错误，关闭套接字
+    void RemoveConnection(const std::shared_ptr<TcpConnection> sptcpconnection);    // 连接清理，这里应该由EventLoop来执行，投递回主线程删除 OR 多线程加锁删除
+
 };
 
 TcpServer::TcpServer(EventLoop *loop, const int port, const int threadnum)
     : tcpServerSocket_(),
-      loop_(loop),
+      mainLoop_(loop),
       tcpServerChannel_(),
       connCount_(0),
       eventLoopThreadPool(loop, threadnum)
@@ -80,14 +83,14 @@ TcpServer::~TcpServer()
 }
 
 /*
- * 启动tcp服务
+ * 
  * 
  */
 void TcpServer::Start()
 {
-    eventLoopThreadPool.Start();
-    tcpServerChannel_.SetEvents(EPOLLIN | EPOLLET);
-    loop_->AddChannelToPoller(&tcpServerChannel_);
+    eventLoopThreadPool.Start();    // 创建所需的所有子线程实例
+    tcpServerChannel_.SetEvents(EPOLLIN | EPOLLET);     // 设置当前连接的监听事件
+    mainLoop_->AddChannelToPoller(&tcpServerChannel_);  // 主事件池添加当前Channel为监听对象
 }
 
 /*

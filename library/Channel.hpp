@@ -1,13 +1,21 @@
 
-// Channel类，承载一个事件的套接字描述符fd和事件events，与epoll_event直接交互
+// Channel类（类似一个session）：
+//  承载一个事件的套接字描述符fd和读写等事件events的连接控制类
+//  与epoll_event直接交互
+//  每一个连接对应生成一个Channel实例，并为之动态绑定
+//  套接字描述符、事件events等
 
-//  EPOLLIN ：表示对应的文件描述符可以读（包括对端SOCKET正常关闭）；
-//  EPOLLOUT：表示对应的文件描述符可以写；
-//  EPOLLPRI：表示对应的文件描述符有紧急的数据可读（这里应该表示有带外数据到来）；
-//  EPOLLERR：表示对应的文件描述符发生错误；
-//  EPOLLHUP：表示对应的文件描述符被挂断；
-//  EPOLLET： 将EPOLL设为边缘触发(Edge Triggered)模式，这是相对于水平触发(Level Triggered)来说的。
-//  EPOLLONESHOT：只监听一次事件，当监听完这次事件之后，如果还需要继续监听这个socket的话，需要再次把这个socket加入到EPOLL队列里
+//  EPOLLIN：   表示对应的文件描述符可以读（包括对端SOCKET正常关闭）；
+//  EPOLLOUT：  表示对应的文件描述符可以写；
+//  EPOLLPRI：  表示对应的文件描述符有紧急的数据可读（这里应该表示有带外数据到来）；
+//  EPOLLERR：  表示对应的文件描述符发生错误；
+//  EPOLLRDHUP：表示对应的文件描述符读关闭；
+//  EPOLLHUP：  表示对应的文件描述符被挂断；
+//  EPOLLET：   将EPOLL设为边缘触发(Edge Triggered)模式，
+//              这是相对于水平触发(Level Triggered)来说的；
+//  EPOLLONESHOT：  只监听一次事件，当监听完这次事件之后，
+//                  如果还需要继续监听这个socket的话，
+//                  需要再次把这个socket加入到EPOLL队列里；
 
 #pragma once
 
@@ -25,19 +33,19 @@ public:
     int GetFd() const;
     void SetEvents(uint32_t events);
     uint32_t GetEvents() const;
-    void HandleEvent();
     void SetReadHandle(const Callback &cb);
     void SetWriteHandle(const Callback &cb);
     void SetErrorHandle(const Callback &cb);
     void SetCloseHandle(const Callback &cb);
+    void HandleEvent();
 
 private:
-    int fd_;
-    uint32_t events_; // 事件，一般情况下为epoll_event.events
-    Callback readHandler_;
-    Callback writeHandler;
-    Callback errorHandler_;
-    Callback closeHandler_;
+    int fd_;                // 连接套接字描述符
+    uint32_t events_;       // 事件，一般情况下为epoll_event.events
+    Callback readHandler_;  // 读取数据回调函数
+    Callback writeHandler;  // 写数据回调函数
+    Callback errorHandler_; // 错误处理回调函数
+    Callback closeHandler_; // 关闭连接回调函数
 
 };
 
@@ -78,7 +86,7 @@ void Channel::SetEvents(uint32_t events)
 }
 
 /*
- * 设置连接事件epoll_event
+ * 获取连接事件epoll_event
  * 
  */
 uint32_t Channel::GetEvents() const
@@ -123,7 +131,7 @@ void Channel::SetCloseHandle(const Callback &cb)
 }
 
 /*
- * 处理请求，选择对应事件执行
+ * 执行连接事件
  * 
  */
 void Channel::HandleEvent()

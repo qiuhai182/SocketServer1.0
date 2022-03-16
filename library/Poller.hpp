@@ -20,13 +20,14 @@ public:
     std::vector<struct epoll_event> eventList_;
     Poller();
     ~Poller();
-    int pollFd_;
-    std::map<int, Channel *> channelMap_;
     std::mutex mutex_;
-    void poll(ChannelList &activeChannelList);
-    void AddChannel(Channel *pchannel);    // 添加事件，EPOLL_CTL_ADD
-    void RemoveChannel(Channel *pchannel); // 移除事件，EPOLL_CTL_DEL
-    void UpdateChannel(Channel *pchannel); // 修改事件，EPOLL_CTL_MOD
+    int pollFd_;    // epoll监听描述符
+    std::map<int, Channel *> channelMap_;       // 套接字描述符->Channel实例，存储所有连接Channel实例
+    void AddChannel(Channel *pchannel);         // 添加事件，EPOLL_CTL_ADD
+    void RemoveChannel(Channel *pchannel);      // 移除事件，EPOLL_CTL_DEL
+    void UpdateChannel(Channel *pchannel);      // 修改事件，EPOLL_CTL_MOD
+    void poll(ChannelList &activeChannelList);  // 获取一批次新事件
+
 };
 
 Poller::Poller()
@@ -46,50 +47,6 @@ Poller::Poller()
 Poller::~Poller()
 {
     close(pollFd_);
-}
-
-/*
- * 封装epoll_wait函数，获取一批次新连接
- * 
- */
-void Poller::poll(ChannelList &activeChannelList)
-{
-    int timeout = TIMEOUT;
-    // 监听一批次epoll网络请求
-    int nfds = epoll_wait(pollFd_, &*eventList_.begin(), (int)eventList_.capacity(), timeout);
-    if (nfds == -1)
-    {
-        perror("epoll wait error");
-    }
-    for (int i = 0; i < nfds; ++i)
-    {
-        // 遍历获取每个网络请求事件
-        int events = eventList_[i].events;
-        // int fd = eventList_[i].data.fd;
-        Channel *pchannel = (Channel *)eventList_[i].data.ptr;
-        int fd = pchannel->GetFd();
-        std::map<int, Channel *>::const_iterator iter;
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            iter = channelMap_.find(fd);
-        }
-        if (iter != channelMap_.end())
-        {
-            pchannel->SetEvents(events);
-            activeChannelList.push_back(pchannel);
-        }
-        else
-        {
-            std::cout << "not find channel!" << std::endl;
-        }
-    }
-    if (nfds == (int)eventList_.capacity())
-    {
-        // 扩大eventList_预分配容量
-        std::cout << "resize:" << nfds << std::endl;
-        eventList_.resize(nfds * 2);
-    }
-    // eventList_.clear();
 }
 
 /*
@@ -152,4 +109,51 @@ void Poller::UpdateChannel(Channel *pchannel)
         perror("epoll update error");
         exit(1);
     }
+}
+
+/*
+ * 封装epoll_wait函数，获取一批次新任务
+ * 由事件池获取新任务时调用
+ * 
+ */
+void Poller::poll(ChannelList &activeChannelList)
+{
+    int timeout = TIMEOUT;
+    // 监听一批次epoll网络请求
+    int nfds = epoll_wait(pollFd_, &*eventList_.begin(), (int)eventList_.capacity(), timeout);
+    if (nfds == -1)
+    {
+        perror("epoll wait error");
+    }
+    // 遍历获取每个网络请求事件
+    for (int i = 0; i < nfds; ++i)
+    {
+        int events = eventList_[i].events;
+        // int fd = eventList_[i].data.fd;
+        // 类型转换为Channel指针类型
+        Channel *pchannel = (Channel *)eventList_[i].data.ptr;
+        int fd = pchannel->GetFd();
+        std::map<int, Channel *>::const_iterator iter;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            iter = channelMap_.find(fd);
+        }
+        // 设置连接Channel实例新连接事件
+        if (iter != channelMap_.end())
+        {
+            pchannel->SetEvents(events);
+            activeChannelList.push_back(pchannel);
+        }
+        else
+        {
+            std::cout << "未找到该连接的Channel实例(not find channel)!" << std::endl;
+        }
+    }
+    // epoll事件列表满，扩大eventList_预分配容量
+    if (nfds == (int)eventList_.capacity())
+    {
+        std::cout << "resize:" << nfds << std::endl;
+        eventList_.resize(nfds * 2);
+    }
+    // eventList_.clear();
 }

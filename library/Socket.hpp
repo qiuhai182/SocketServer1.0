@@ -1,17 +1,18 @@
 
-// socket类，封装socket描述符及相关函数
+// socket类：
+//  封装socket描述符及相关函数
 
 #pragma once
 
 #include <iostream>
-#include <stdio.h>
-#include <unistd.h>
+#include <cstdio>
+#include <cerrno>
+#include <cstdlib>
+#include <cstring>
 #include <fcntl.h>
+#include <unistd.h>
 #include <sys/types.h>
 #include <sys/socket.h>
-#include <errno.h>
-#include <stdlib.h>
-#include <cstring>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
@@ -23,13 +24,14 @@ private:
 public:
     Socket();
     ~Socket();
-    int fd() const { return _socketFd; }
-    void SetReuseAddr();
-    void SetNonblocking();
-    bool BindAddress(int serverport);
-    bool Listen();
-    int Accept(struct sockaddr_in &clientaddr);
-    bool Close();
+    int fd() const { return _socketFd; } // 获取套接字描述符
+    void SetReuseAddr();    // 地址重用
+    void SetNonblocking();  // 非阻塞IO
+    bool BindAddress(int serverport);   // 绑定监听IP:端口
+    bool Listen();  // 监听启动
+    int Accept(struct sockaddr_in &clientaddr); // 响应连接
+    bool Close(); // 关闭套接字连接
+
 };
 
 Socket::Socket()
@@ -87,6 +89,7 @@ bool Socket::BindAddress(int serverPort)
     serverAddr.sin_family = AF_INET;
     serverAddr.sin_addr.s_addr = htonl(INADDR_ANY);
     serverAddr.sin_port = htons(serverPort);
+    // 套接字绑定IP和端口
     int resval = bind(_socketFd, (struct sockaddr *)&serverAddr, sizeof(serverAddr));
     if (resval == -1)
     {
@@ -103,6 +106,7 @@ bool Socket::BindAddress(int serverPort)
  */
 bool Socket::Listen()
 {
+    // 开始监听
     if (listen(_socketFd, 8192) < 0)
     {
         perror("error listen");
@@ -118,6 +122,7 @@ bool Socket::Listen()
  */
 int Socket::Accept(struct sockaddr_in &clientAddr)
 {
+    // 响应一个连接请求
     socklen_t lengthOfClientAddr = sizeof(clientAddr);
     int clientFd = accept(_socketFd, (struct sockaddr *)&clientAddr, &lengthOfClientAddr);
     if (clientFd < 0 && errno == EAGAIN)

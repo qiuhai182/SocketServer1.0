@@ -1,5 +1,6 @@
 
-// EventLoopThread类，特殊任务线程
+// EventLoopThread类：
+//  特殊任务线程
 
 #pragma once
 
@@ -11,18 +12,18 @@
 
 class EventLoopThread
 {
-private:
-    std::thread childThread_;
-    std::thread::id curThreadId_;
-    std::string threadName_;
-    EventLoop *loop_;
-
 public:
     EventLoopThread();
     ~EventLoopThread();
     EventLoop* GetLoop();
     void ThreadFunc();
     void Start();
+
+private:
+    std::thread childThread_;
+    std::thread::id curThreadId_;
+    std::string threadName_;
+    EventLoop *loop_;
 
 };
 
@@ -37,7 +38,9 @@ EventLoopThread::EventLoopThread()
 EventLoopThread::~EventLoopThread()
 {
     loop_->Quit();
-    childThread_.join(); // 清理IO线程，防止内存泄漏，因为pthread_created会calloc
+    // 析构时同步启动子线程
+    // 清理IO线程，防止内存泄漏，因为pthread_created会calloc
+    childThread_.join();
 }
 
 /*
@@ -50,7 +53,7 @@ EventLoop *EventLoopThread::GetLoop()
 }
 
 /*
- * 
+ * 创建子线程
  * 
  */
 void EventLoopThread::Start()
@@ -59,7 +62,7 @@ void EventLoopThread::Start()
 }
 
 /*
- * 
+ * 子线程回调函数
  * 
  */
 void EventLoopThread::ThreadFunc()
@@ -80,3 +83,5 @@ void EventLoopThread::ThreadFunc()
         std::cerr << "bad_alloc caught in EventLoopThread::ThreadFunc loop: " << ba.what() << '\n';
     }
 }
+
+

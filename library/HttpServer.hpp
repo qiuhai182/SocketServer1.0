@@ -9,9 +9,9 @@
 #include <iostream>
 #include <functional>
 #include <memory>
-#include "TimerManager.hpp"
-#include "EventLoop.hpp"
 #include "TcpServer.hpp"
+#include "EventLoop.hpp"
+#include "TimerManager.hpp"
 #include "TcpConnection.hpp"
 #include "HttpSession.hpp"
 #include "ThreadPool.hpp"
@@ -37,6 +37,7 @@ private:
     std::mutex mutex_;
     TcpServer tcpserver_;
     ThreadPool threadpool_;
+
 };
 
 HttpServer::HttpServer(EventLoop *loop, const int port, const int iothreadnum, const int workerthreadnum)
