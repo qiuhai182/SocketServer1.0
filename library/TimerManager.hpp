@@ -1,5 +1,6 @@
 
-// TimerManager类，定时器管理，基于时间轮实现，增加删除O(1)，执行可能复杂度高些，slot多的话可以降低链表长度
+// TimerManager类
+//  定时器管理类，基于时间轮实现，增加删除O(1)，执行可能复杂度高些，slot多的话可以降低链表长度
 
 #pragma once
 
@@ -20,7 +21,7 @@ class TimerManager
 {
 public:
     typedef std::function<void()> CallBack;
-    static TimerManager *GetTimerManagerInstance();
+    static TimerManager *GetTimerManagerInstance(); // 获取TimerManager单例指针
     void AddTimer(Timer *ptimer);
     void RemoveTimer(Timer *ptimer);
     void AdjustTimer(Timer *ptimer);
@@ -37,7 +38,7 @@ public:
     };
 
 private:
-    TimerManager();
+    TimerManager();     // 单例模式
     ~TimerManager();
     static TimerManager *timerManager_;
     static std::mutex mutex_;
@@ -55,14 +56,15 @@ private:
     void AddTimerToTimeWheel(Timer *ptimer);
     void RemoveTimerFromTimeWheel(Timer *ptimer);
     void AdjustTimerToWheel(Timer *ptimer);
+
 };
 
-// 全局初始化
-TimerManager *TimerManager::timerManager_ = nullptr;
+// 全局初始化（静态初始化、常量初始化）
 std::mutex TimerManager::mutex_;
-TimerManager::GC TimerManager::gc;
-const int TimerManager::slotInterval = 1;
-const int TimerManager::slotNum = 1024;
+TimerManager *TimerManager::timerManager_ = nullptr;    // 
+TimerManager::GC TimerManager::gc;          // 
+const int TimerManager::slotInterval = 1;   // 
+const int TimerManager::slotNum = 1024;     // 最大定时器数量
 
 TimerManager::TimerManager()
     : currentSlot(0),
@@ -95,8 +97,8 @@ TimerManager *TimerManager::GetTimerManagerInstance()
 }
 
 /*
- * 添加一个定时器任务到定时器列表timeWheel
- * 实际传入需要计算参数的Timer指针
+ * 添加一个定时器任务到定时器列表timeWheel（时间轮）
+ * 实际传入需要计算Timer指针的参数
  */
 void TimerManager::AddTimer(Timer *ptimer)
 {

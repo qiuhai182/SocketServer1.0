@@ -2,8 +2,9 @@
 // 线程池类
 
 // 使用的同步原语有
-// pthread_mutex_t mutex_l;//互斥锁
-// pthread_cond_t condtion_l;//条件变量
+// pthread_mutex_t mutex_l;     //互斥锁
+// pthread_cond_t condtion_l;   //条件变量
+
 // 使用的系统调用有
 // pthread_mutex_init();
 // pthread_cond_init();
@@ -36,19 +37,19 @@ public:
     typedef std::function<void()> Task;
     ThreadPool(int threadnum = 0);
     ~ThreadPool();
-    void Start();
-    void Stop();
-    void AddTask(Task task);
-    void ThreadFunc();
-    int GetThreadNum();
+    void Start();           // 标志为运行状态，创建threadNum_个子线程作为工作线程
+    void Stop();            // 标志为停止运行状态，唤醒所有线程，线程分离异步运行，清空线程池
+    void AddTask(Task task);// 添加一个任务到任务列表taskQueue_，随机唤醒一个工作线程执行一个任务
+    void ThreadFunc();      // 线程回调函数，单次遍历，加锁取出taskQueue_的一个任务并执行
+    int GetThreadNum();     // 获取工作线程数量
 
 private:
-    bool started_;
-    int threadNum_;
-    std::vector<std::thread *> threadList_;
-    std::queue<Task> taskQueue_;
+    bool started_;      // 线程池运行状态
+    int threadNum_;     // 线程池控制工作线程数量
     std::mutex mutex_;
     std::condition_variable condition_;
+    std::vector<std::thread *> threadList_; // 工作线程列表
+    std::queue<Task> taskQueue_;    // 任务队列，由线程池及其子工作线程间共享，线程池负责添加，工作线程执行
 };
 
 ThreadPool::ThreadPool(int threadnum)
@@ -69,7 +70,7 @@ ThreadPool::~ThreadPool()
     {
         threadList_[i]->join();
     }
-    for (int i = 0; i < threadNum_; ++i)
+    for (int i = 0; i < threadNum_; ++i) 
     {
         delete threadList_[i];
     }
@@ -77,7 +78,7 @@ ThreadPool::~ThreadPool()
 }
 
 /*
- * 启动线程池，新开threadNum_个子线程作为工作线程
+ * 标志为运行状态，创建threadNum_个子线程作为工作线程
  * 
  */
 void ThreadPool::Start()
@@ -94,7 +95,7 @@ void ThreadPool::Start()
 }
 
 /*
- * 线程池停止执行，唤醒并关闭所有工作线程
+ * 标志为停止运行状态，唤醒所有线程，线程分离异步运行，清空线程池
  * 
  */
 void ThreadPool::Stop()
@@ -103,14 +104,16 @@ void ThreadPool::Stop()
     condition_.notify_all();
     for (auto i : threadList_)
     {
+        // 线程分离，异步线程
         i->detach();
     }
     threadList_.clear();
 }
 
 /*
- * 为线程池任务队列taskQueue_加锁添加任务
- * 随机唤醒一个工作线程
+ * 添加一个任务到任务列表taskQueue_
+ * 随机唤醒一个工作线程执行一个任务
+ * 
  */
 void ThreadPool::AddTask(Task task)
 {
@@ -122,32 +125,35 @@ void ThreadPool::AddTask(Task task)
 }
 
 /*
- * 线程回调函数，在每个工作线程内长期执行直至子线程被回收
+ * 线程回调函数，在每个工作线程内运行的回调函数
  * 单次遍历，加锁取出taskQueue_的一个任务并执行
+ * 
  */
 void ThreadPool::ThreadFunc()
 {
     std::thread::id tid = std::this_thread::get_id();
     std::stringstream sin;
     sin << tid;
-    std::cout << "工作子线程: " << tid << std::endl;
+    std::cout << "工作线程: " << tid << "启动" << std::endl;
     Task task;
     while (started_)
     {
         task = NULL;
         {
+            // 无名作用域
             std::unique_lock<std::mutex> lock(mutex_);
             while (taskQueue_.empty() && started_)
             {
                 // 线程阻塞并等待被唤醒
                 condition_.wait(lock);
             }
+            // 线程被唤醒发现需要退出工作状态，退出循环
             if (!started_)
             {
                 break;
             }
-            std::cout << "工作线程唤醒: " << tid << std::endl;
-            std::cout << "现有待处理任务数量: " << taskQueue_.size() << std::endl;
+            std::cout << "工作线程: " << tid << "已唤醒，现有待处理任务数量: " << taskQueue_.size() << std::endl;
+            // 取出队头待处理任务
             task = taskQueue_.front();
             taskQueue_.pop();
         }
@@ -166,12 +172,12 @@ void ThreadPool::ThreadFunc()
     }
     if (!started_)
     {
-        std::cout << "工作子线程退出：" << tid << std::endl;
+        std::cout << "工作子线程：" << tid << "结束" << std::endl;
     }
 }
 
 /*
- * 获取线程数量
+ * 获取工作线程数量
  * 
  */
 int ThreadPool::GetThreadNum()

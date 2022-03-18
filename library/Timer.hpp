@@ -1,11 +1,13 @@
 
-// Timer类，定时器，生命周期由用户自行管理
+// Timer类
+//  定时器，生命周期由用户自行管理
 
 #pragma once
 
 #include <functional>
 #include <sys/time.h>
 // #include "TimerManager.hpp"
+
 class TimerManager;
 
 class Timer
@@ -19,18 +21,17 @@ public:
     } TimerType;
     Timer(int timeout, TimerType timertype, const CallBack &timerCallBack);
     ~Timer();
-    int timeOut_;
-    TimerType timerType_;
-    CallBack timerCallBack_;
-    // 定时器剩下的转数
-    int rotation;
-    int timeSlot;
-    Timer *prev;
-    Timer *next;
-    void Start();
-    void Stop();
-    // 重新设置定时器
-    void Adjust(int timeout, Timer::TimerType timertype, const CallBack &timerCallBack);
+    int timeOut_;           // 超时时间
+    TimerType timerType_;   // 定时器类型
+    CallBack timerCallBack_;// 触发函数
+    int rotation;   // 定时器剩下的转数
+    int timeSlot;   // 
+    Timer *prev;    // 
+    Timer *next;    // 
+    void Start();   // 
+    void Stop();    // 
+    void Adjust(int timeout, Timer::TimerType timertype, const CallBack &timerCallBack);    // 重新设置定时器
+
 };
 
 Timer::Timer(int timeout, TimerType timertype, const CallBack &timercallback)
@@ -71,6 +72,7 @@ void Timer::Stop()
 
 /*
  * 更新定时器信息
+ * 超时时间、定时器类型、触发函数
  * 
  */
 void Timer::Adjust(int timeOut, Timer::TimerType timerType, const CallBack &timerCallBack)

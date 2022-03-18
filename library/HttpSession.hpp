@@ -76,11 +76,15 @@ private:
     bool keepalive_; // 长连接标志
 
 public:
-    HttpSession(); // 单例模式
+    HttpSession();
     ~HttpSession();
-    bool ParseHttpRequest(std::string &s, HttpRequestContext &httprequestcontext);
+    // 解析http请求信息
+    bool ParseHttpRequest(std::string &s, HttpRequestContext &httprequestcontext);  
+    // http请求处理与响应函数
     void HttpProcess(const HttpRequestContext &httprequestcontext, std::string &responsecontext);
+    // 处理错误http请求，返回错误描述
     void HttpError(const int err_num, const std::string short_msg, const HttpRequestContext &httprequestcontext, std::string &responsecontext);
+    // TODO
     bool KeepAlive();
 };
 
@@ -149,7 +153,7 @@ bool HttpSession::ParseHttpRequest(std::string &msg, HttpRequestContext &httpreq
 }
 
 /*
- * http服务提供函数
+ * http请求处理与响应函数
  * 
  */
 void HttpSession::HttpProcess(const HttpRequestContext &httprequestcontext, std::string &responsecontext)
@@ -261,7 +265,7 @@ void HttpSession::HttpProcess(const HttpRequestContext &httprequestcontext, std:
 }
 
 /*
- * 处理错误http请求，发送出错信息
+ * 处理错误http请求，返回错误描述
  * 
  */
 void HttpSession::HttpError(const int err_num, const std::string short_msg, const HttpRequestContext &httprequestcontext, std::string &responsecontext)
@@ -293,7 +297,7 @@ void HttpSession::HttpError(const int err_num, const std::string short_msg, cons
 }
 
 /*
- * 
+ * TODO
  * 
  */
 bool HttpSession::KeepAlive()

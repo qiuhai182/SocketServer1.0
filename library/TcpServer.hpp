@@ -36,7 +36,7 @@ public:
     typedef std::function<void(const spTcpConnection &)> Callback;
     TcpServer(EventLoop *loop, const int port, const int threadnum = 0);
     ~TcpServer();
-    void Start();
+    void Start();   // 创建所需的事件池子线程，添加tcp服务Channel实例为监听对象
     void SetNewConnCallback(const Callback &cb);            // 设置新连接处理函数
     void SetMessageCallback(const MessageCallback &cb);     // 设置消息处理函数
     void SetSendCompleteCallback(const Callback &cb);       // 设置数据发送完毕处理函数
@@ -50,7 +50,7 @@ private:
     EventLoop *mainLoop_;           // 事件池主逻辑控制实例
     int connCount_;                 // 连接计数
     EventLoopThreadPool eventLoopThreadPool;    // 多线程事件池
-    std::map<int, std::shared_ptr<TcpConnection>> tcpConnList_; // 
+    std::map<int, std::shared_ptr<TcpConnection>> tcpConnList_; // 套接字描述符->连接抽象类实例
     Callback newConnectionCallback_;    // 新连接处理回调函数
     MessageCallback messageCallback_;   // 消息处理回调函数
     Callback sendCompleteCallback_;     // 数据发送完毕处理回调函数
@@ -83,7 +83,7 @@ TcpServer::~TcpServer()
 }
 
 /*
- * 
+ * 创建所需的事件池子线程，添加tcp服务Channel实例为监听对象
  * 
  */
 void TcpServer::Start()
@@ -148,7 +148,7 @@ void TcpServer::OnNewConnection()
     int clientfd;
     while ((clientfd = tcpServerSocket_.Accept(clientaddr)) > 0)
     {
-        std::cout << "New client from IP:" << inet_ntoa(clientaddr.sin_addr)
+        std::cout << "TceServer accept new client from IP:" << inet_ntoa(clientaddr.sin_addr)
                   << ":" << ntohs(clientaddr.sin_port) << std::endl;
         if (++connCount_ >= MAXCONNECTION)
         {
@@ -157,19 +157,22 @@ void TcpServer::OnNewConnection()
             continue;
         }
         Setnonblocking(clientfd);
-        EventLoop *loop = eventLoopThreadPool.GetNextLoop();
+        EventLoop *loop = eventLoopThreadPool.GetNextLoop();    // 从多线程事件池获取一个事件池索引
+        // 创建连接抽象类实例TcpConnection
         std::shared_ptr<TcpConnection> sptcpconnection = std::make_shared<TcpConnection>(loop, clientfd, clientaddr);
+        // 基于TcpConnection设置TcpServer服务函数，在TcpConnection内触发调用TcpServer的成员函数，类似于信号槽机制
         sptcpconnection->SetMessaeCallback(messageCallback_);
         sptcpconnection->SetSendCompleteCallback(sendCompleteCallback_);
         sptcpconnection->SetCloseCallback(closeCallback_);
         sptcpconnection->SetErrorCallback(errorCallback_);
         sptcpconnection->SetConnectionCleanUp(std::bind(&TcpServer::RemoveConnection, this, std::placeholders::_1));
         {
+            // 无名作用域
             std::lock_guard<std::mutex> lock(mutex_);
             tcpConnList_[clientfd] = sptcpconnection;
         }
-        newConnectionCallback_(sptcpconnection);
-        // Bug，应该把事件添加的操作放到最后,否则bug segement fault,导致HandleMessage中的phttpsession==NULL
+        newConnectionCallback_(sptcpconnection); // 调用动态绑定的newConnectionCallback_函数
+        // TODO Bug，应该把事件添加的操作放到最后,否则bug segement fault,导致HandleMessage中的phttpsession==NULL
         // 总之就是做好一切准备工作再添加事件到epoll！！！
         sptcpconnection->AddChannelToLoop();
     }

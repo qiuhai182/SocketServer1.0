@@ -222,6 +222,7 @@ void EventLoop::loop()
             ExecuteTask();
         }
     }
+    std::cout << "一个事件池EventLoop退出" << std::endl;
 }
 
 

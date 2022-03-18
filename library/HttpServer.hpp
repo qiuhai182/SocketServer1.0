@@ -24,19 +24,19 @@ public:
     typedef std::shared_ptr<Timer> spTimer;
     HttpServer(EventLoop *loop, const int port, const int iothreadnum, const int workerthreadnum);
     ~HttpServer();
-    void Start();
+    void Start();   // tcpServer创建所需的事件池子线程，添加tcp服务Channel实例为监听对象
 
 private:
-    void HandleNewConnection(const spTcpConnection &sptcpconn);
-    void HandleMessage(const spTcpConnection &sptcpconn, std::string &msg);
-    void HandleSendComplete(const spTcpConnection &sptcpconn);
-    void HandleClose(const spTcpConnection &sptcpconn);
-    void HandleError(const spTcpConnection &sptcpconn);
-    std::map<spTcpConnection, std::shared_ptr<HttpSession>> httpSessionnList_;
-    std::map<spTcpConnection, spTimer> timerList_;
     std::mutex mutex_;
-    TcpServer tcpserver_;
-    ThreadPool threadpool_;
+    std::map<spTcpConnection, std::shared_ptr<HttpSession>> httpSessionnList_;  // 
+    std::map<spTcpConnection, spTimer> timerList_;  // 
+    TcpServer tcpserver_;   // 基础网络服务TcpServer
+    ThreadPool threadpool_; // 线程池
+    void HandleNewConnection(const spTcpConnection &sptcpconn); // HttpServer模式处理新连接
+    void HandleMessage(const spTcpConnection &sptcpconn, std::string &msg); // HttpServer模式处理收到的请求
+    void HandleSendComplete(const spTcpConnection &sptcpconn);  // HttpServer模式数据发送客户端完毕
+    void HandleClose(const spTcpConnection &sptcpconn); // HttpServer模式处理连接断开
+    void HandleError(const spTcpConnection &sptcpconn); // HttpServer模式处理连接出错
 
 };
 
@@ -44,6 +44,7 @@ HttpServer::HttpServer(EventLoop *loop, const int port, const int iothreadnum, c
     : tcpserver_(loop, port, iothreadnum),
       threadpool_(workerthreadnum)
 {
+    // 基于TcpServer设置HttpServer服务函数，在TcpServer内触发调用HttpServer的成员函数，类似于信号槽机制
     tcpserver_.SetNewConnCallback(std::bind(&HttpServer::HandleNewConnection, this, std::placeholders::_1));
     tcpserver_.SetMessageCallback(std::bind(&HttpServer::HandleMessage, this, std::placeholders::_1, std::placeholders::_2));
     tcpserver_.SetSendCompleteCallback(std::bind(&HttpServer::HandleSendComplete, this, std::placeholders::_1));
@@ -58,7 +59,9 @@ HttpServer::~HttpServer()
 }
 
 /*
- * 处理新连接
+ * HttpServer模式处理新连接
+ * 创建新连接对应的HttpSession、Timer
+ * 并添加到httpSessionnList_、timerList_列表内存储
  * 
  */
 void HttpServer::HandleNewConnection(const spTcpConnection &sptcpconn)
@@ -74,7 +77,7 @@ void HttpServer::HandleNewConnection(const spTcpConnection &sptcpconn)
 }
 
 /*
- * 处理收到的请求
+ * HttpServer模式处理收到的请求
  * 
  */
 void HttpServer::HandleMessage(const spTcpConnection &sptcpconn, std::string &msg)
@@ -82,6 +85,7 @@ void HttpServer::HandleMessage(const spTcpConnection &sptcpconn, std::string &ms
     std::shared_ptr<HttpSession> sphttpsession;
     spTimer sptimer;
     {
+        // 无名作用域
         std::lock_guard<std::mutex> lock(mutex_);
         sphttpsession = httpSessionnList_[sptcpconn];
         sptimer = timerList_[sptcpconn];
@@ -134,7 +138,7 @@ void HttpServer::HandleMessage(const spTcpConnection &sptcpconn, std::string &ms
 }
 
 /*
- * 数据发送客户端完毕
+ * HttpServer模式数据发送客户端完毕
  * 
  */
 void HttpServer::HandleSendComplete(const spTcpConnection &sptcpconn)
@@ -142,7 +146,7 @@ void HttpServer::HandleSendComplete(const spTcpConnection &sptcpconn)
 }
 
 /*
- * 连接断开
+ * HttpServer模式处理连接断开
  * 
  */
 void HttpServer::HandleClose(const spTcpConnection &sptcpconn)
@@ -155,7 +159,7 @@ void HttpServer::HandleClose(const spTcpConnection &sptcpconn)
 }
 
 /*
- * 连接出错
+ * HttpServer模式处理连接出错
  * 
  */
 void HttpServer::HandleError(const spTcpConnection &sptcpconn)
@@ -168,7 +172,8 @@ void HttpServer::HandleError(const spTcpConnection &sptcpconn)
 }
 
 /*
- * 启动http服务
+ * tcpServer创建所需的事件池子线程
+ * 添加tcp服务Channel实例为监听对象
  * 
  */
 void HttpServer::Start()

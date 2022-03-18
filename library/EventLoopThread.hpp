@@ -15,15 +15,15 @@ class EventLoopThread
 public:
     EventLoopThread();
     ~EventLoopThread();
-    EventLoop* GetLoop();
-    void ThreadFunc();
-    void Start();
+    EventLoop* GetLoop();   // 获取事件线程的事件池对象指针
+    void ThreadFunc();      // 工作线程的回调函数
+    void Start();           // 创建工作子线程
 
 private:
-    std::thread childThread_;
-    std::thread::id curThreadId_;
-    std::string threadName_;
-    EventLoop *loop_;
+    std::thread childThread_;       // 工作子线程
+    std::thread::id curThreadId_;   // 当前线程ID，使用时由子线程内部为其赋值
+    std::string threadName_;        // 线程名，使用时由子线程内部为其补全赋值
+    EventLoop *loop_;               // 事件池实例对象
 
 };
 
@@ -44,7 +44,7 @@ EventLoopThread::~EventLoopThread()
 }
 
 /*
- * 
+ * 获取事件线程的事件池对象指针
  * 
  */
 EventLoop *EventLoopThread::GetLoop()
@@ -53,7 +53,7 @@ EventLoop *EventLoopThread::GetLoop()
 }
 
 /*
- * 创建子线程
+ * 创建工作子线程
  * 
  */
 void EventLoopThread::Start()
@@ -74,14 +74,17 @@ void EventLoopThread::ThreadFunc()
     std::stringstream sin;
     sin << curThreadId_;
     threadName_ += sin.str();
+    std::cout << "特殊工作线程" << threadName_ << "启动" << std::endl;
     try
     {
+        // 启动事件池循环监听
         loop_->loop();
     }
     catch (std::bad_alloc &ba)
     {
         std::cerr << "bad_alloc caught in EventLoopThread::ThreadFunc loop: " << ba.what() << '\n';
     }
+    std::cout << "特殊工作线程" << threadName_ << "退出" << std::endl;
 }
 
 

@@ -36,7 +36,7 @@ public:
     void AddChannelToLoop();    // EventLoop添加监听Channel
     void Shutdown();            // 关闭当前连接，指定EventLoop执行
     void ShutdownInLoop();      // 关闭当前连接，由EventLoop执行
-    void HandleRead();          // 接收客户端发送的数据，调用绑定的messagecallback_函数
+    void HandleRead();          // 接收客户端发送的数据，调用绑定的messageCallback_函数
     void HandleWrite();         // 向客户端发送数据
     void HandleError();         // 处理连接错误
     void HandleClose();         // 处理客户端连接关闭
@@ -57,10 +57,10 @@ private:
     bool asyncProcessing_;  // 异步调用标志位，当工作任务交给线程池时，置为true，任务完成回调时置为false
     std::string bufferIn_;  // 
     std::string bufferOut_; // 
-    MessageCallback messagecallback_;   // 
-    Callback sendcompletecallback_;     // 
-    Callback closecallback_;            // 
-    Callback errorcallback_;            // 
+    MessageCallback messageCallback_;   // 
+    Callback sendcompleteCallback_;     // 
+    Callback closeCallback_;            // 
+    Callback errorCallback_;            // 
     Callback connectioncleanup_;        // 
 
 };
@@ -153,7 +153,7 @@ void TcpConnection::SendInLoop()
         {
             // 数据已发完
             spChannel_->SetEvents(events & (~EPOLLOUT));
-            sendcompletecallback_(shared_from_this());
+            sendcompleteCallback_(shared_from_this());
             if (halfClose_)
                 HandleClose();
         }
@@ -187,7 +187,7 @@ void TcpConnection::Shutdown()
 
 /*
  * 关闭当前连接，由EventLoop执行
- * 调用绑定的closecallback_函数
+ * 调用绑定的closeCallback_函数
  * 向EventLoop添加connectioncleanup_函数任务
  */
 void TcpConnection::ShutdownInLoop()
@@ -196,13 +196,13 @@ void TcpConnection::ShutdownInLoop()
     {
         return;
     }
-    closecallback_(shared_from_this());
+    closeCallback_(shared_from_this());
     loop_->AddTask(std::bind(connectioncleanup_, shared_from_this()));
     disConnected_ = true;
 }
 
 /*
- * 接收客户端发送的数据，调用绑定的messagecallback_函数
+ * 接收客户端发送的数据，调用绑定的messageCallback_函数
  * 
  */
 void TcpConnection::HandleRead()
@@ -212,7 +212,7 @@ void TcpConnection::HandleRead()
     // 业务回调,可以利用工作线程池处理，投递任务
     if (result > 0)
     {
-        messagecallback_(shared_from_this(), bufferIn_); // 可以用右值引用优化，bufferIn_.clear();
+        messageCallback_(shared_from_this(), bufferIn_); // 可以用右值引用优化，bufferIn_.clear();
     }
     else if (result == 0)
     {
@@ -244,7 +244,7 @@ void TcpConnection::HandleWrite()
         {
             // 数据已发完
             spChannel_->SetEvents(events & (~EPOLLOUT));
-            sendcompletecallback_(shared_from_this());
+            sendcompleteCallback_(shared_from_this());
             // 发送完毕，如果是半关闭状态，则可以close了
             if (halfClose_)
                 HandleClose();
@@ -270,7 +270,7 @@ void TcpConnection::HandleError()
     {
         return;
     }
-    errorcallback_(shared_from_this());
+    errorCallback_(shared_from_this());
     // loop_->RemoveChannelToPoller(pchannel_);
     // 连接标记为清理
     // task添加
@@ -290,7 +290,7 @@ void TcpConnection::HandleClose()
     // 连接标记为清理
     // task添加
     // loop_->AddTask(connectioncleanup_);
-    // closecallback_(this);
+    // closeCallback_(this);
     if (disConnected_)
     {
         return;
@@ -302,13 +302,13 @@ void TcpConnection::HandleClose()
         // 还有数据刚刚才收到，但同时又收到FIN
         if (bufferIn_.size() > 0)
         {
-            messagecallback_(shared_from_this(), bufferIn_);
+            messageCallback_(shared_from_this(), bufferIn_);
         }
     }
     else
     {
         loop_->AddTask(std::bind(connectioncleanup_, shared_from_this()));
-        closecallback_(shared_from_this());
+        closeCallback_(shared_from_this());
         disConnected_ = true;
     }
 }
@@ -319,7 +319,7 @@ void TcpConnection::HandleClose()
  */
 void TcpConnection::SetMessaeCallback(const MessageCallback &cb)
 {
-    messagecallback_ = cb;
+    messageCallback_ = cb;
 }
 
 /*
@@ -328,7 +328,7 @@ void TcpConnection::SetMessaeCallback(const MessageCallback &cb)
  */
 void TcpConnection::SetSendCompleteCallback(const Callback &cb)
 {
-    sendcompletecallback_ = cb;
+    sendcompleteCallback_ = cb;
 }
 
 /*
@@ -337,7 +337,7 @@ void TcpConnection::SetSendCompleteCallback(const Callback &cb)
  */
 void TcpConnection::SetCloseCallback(const Callback &cb)
 {
-    closecallback_ = cb;
+    closeCallback_ = cb;
 }
 
 /*
@@ -346,7 +346,7 @@ void TcpConnection::SetCloseCallback(const Callback &cb)
  */
 void TcpConnection::SetErrorCallback(const Callback &cb)
 {
-    errorcallback_ = cb;
+    errorCallback_ = cb;
 }
 
 /*
