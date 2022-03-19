@@ -22,12 +22,12 @@ class TimerManager
 public:
     typedef std::function<void()> CallBack;
     static TimerManager *GetTimerManagerInstance(); // 获取TimerManager单例指针
-    void AddTimer(Timer *ptimer);
-    void RemoveTimer(Timer *ptimer);
-    void AdjustTimer(Timer *ptimer);
-    void Start();
-    void Stop();
-    class GC
+    void AddTimer(Timer *ptimer);       // 添加一个定时器任务到定时器列表timeWheel（时间轮）
+    void RemoveTimer(Timer *ptimer);    // 从定时器列表timeWheel删除一个定时任务
+    void AdjustTimer(Timer *ptimer);    // 修改定时器列表timeWheel内一个定时任务的信息
+    void Start();   // 标志为运行状态，创建子线程
+    void Stop();    // 标志为停止运行状态，同步启动线程
+    class GC        // 全局静态初始化一个GC类，GC析构时析构单例TimerManager
     {
     public:
         ~GC()
@@ -40,29 +40,29 @@ public:
 private:
     TimerManager();     // 单例模式
     ~TimerManager();
-    static TimerManager *timerManager_;
-    static std::mutex mutex_;
-    static GC gc;
-    std::vector<Timer *> timeWheel;
-    std::mutex timeWheelMutex_;
-    bool running_;
-    int currentSlot;
-    static const int slotInterval;
-    static const int slotNum;
-    std::thread th_;
-    void CheckTimer();
-    void CheckTick();
-    void CalculateTimer(Timer *ptimer);
-    void AddTimerToTimeWheel(Timer *ptimer);
-    void RemoveTimerFromTimeWheel(Timer *ptimer);
-    void AdjustTimerToWheel(Timer *ptimer);
+    static std::mutex mutex_;   // 锁
+    std::mutex timeWheelMutex_; // 时间轮专用锁
+    static GC gc;       // 静态成员对象GC，其析构函数调用TimerManager的析构函数
+    static TimerManager *timerManager_; // 静态指针成员，其指向生成的单例模式TimerManager实例
+    std::vector<Timer *> timeWheel;     // 时间轮列表，存储了所有的定时器指针
+    bool running_;      // 运行状态
+    int currentSlot;    // 当前时间轮的槽位标志
+    static const int slotInterval;  // 
+    static const int slotNum;       // 时间轮定时器最大数量
+    std::thread th_;    // 工作子线程
+    void CheckTimer();  // 时间轮检查超时任务，执行当前slot的任务
+    void CheckTick();   // 线程回调函数，线程实际执行任务的函数
+    void CalculateTimer(Timer *ptimer);         // 计算定时器参数timeSlot、rotation
+    void AddTimerToTimeWheel(Timer *ptimer);    // 添加一个定时器任务到定时器列表timeWheel（时间轮）
+    void AdjustTimerToWheel(Timer *ptimer);     // 修改定时器列表timeWheel内一个定时任务的信息
+    void RemoveTimerFromTimeWheel(Timer *ptimer);   // 从定时器列表timeWheel删除一个定时任务
 
 };
 
 // 全局初始化（静态初始化、常量初始化）
 std::mutex TimerManager::mutex_;
-TimerManager *TimerManager::timerManager_ = nullptr;    // 
-TimerManager::GC TimerManager::gc;          // 
+TimerManager *TimerManager::timerManager_ = nullptr;    // 静态指针成员，其指向生成的单例模式TimerManager实例
+TimerManager::GC TimerManager::gc;          // 全局静态成员对象GC，其析构函数调用TimerManager的析构函数
 const int TimerManager::slotInterval = 1;   // 
 const int TimerManager::slotNum = 1024;     // 最大定时器数量
 
@@ -198,7 +198,7 @@ void TimerManager::AdjustTimerToWheel(Timer *ptimer)
 }
 
 /*
- * 计算定时器参数
+ * 计算定时器参数timeSlot、rotation
  * 
  */
 void TimerManager::CalculateTimer(Timer *ptimer)
@@ -222,9 +222,10 @@ void TimerManager::CalculateTimer(Timer *ptimer)
 
 /*
  * 时间轮检查超时任务
+ * 执行当前slot的任务
  * 
  */
-void TimerManager::CheckTimer() // 执行当前slot的任务
+void TimerManager::CheckTimer()
 {
     std::lock_guard<std::mutex> lock(timeWheelMutex_);
     Timer *ptimer = timeWheel[currentSlot];
@@ -238,7 +239,8 @@ void TimerManager::CheckTimer() // 执行当前slot的任务
         else
         {
             // 可执行定时器任务
-            ptimer->timerCallBack_(); // 注意：任务里不能把定时器自身给清理掉！！！我认为应该先移除再执行任务
+            // 注意：任务里不能把定时器自身给清理掉！！！我认为应该先移除再执行任务
+            ptimer->timerCallBack_();
             if (ptimer->timerType_ == Timer::TimerType::TIMER_ONCE)
             {
                 Timer *ptemptimer = ptimer;
@@ -262,7 +264,7 @@ void TimerManager::CheckTimer() // 执行当前slot的任务
 }
 
 /*
- * 线程实际执行任务的函数
+ * 线程回调函数，线程实际执行任务的函数
  * 
  */
 void TimerManager::CheckTick()
@@ -297,7 +299,7 @@ void TimerManager::CheckTick()
 }
 
 /*
- * 启动TimerManager线程
+ * 标志为运行状态，创建子线程
  * 
  */
 void TimerManager::Start()
@@ -307,7 +309,7 @@ void TimerManager::Start()
 }
 
 /*
- * 回收TimerManager线程
+ * 标志为停止运行状态，同步启动线程
  * 
  */
 void TimerManager::Stop()
