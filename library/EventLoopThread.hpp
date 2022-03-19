@@ -77,6 +77,7 @@ void EventLoopThread::ThreadFunc()
     std::cout << "事件池工作线程：" << threadName_ << " 启动" << std::endl;
     try
     {
+        std::cout << "事件池工作线程：" << threadName_ << " 开始监听"
         // 启动事件池循环监听
         loop_->loop();
     }
