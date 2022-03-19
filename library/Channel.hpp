@@ -29,15 +29,15 @@ public:
     typedef std::function<void()> Callback;
     Channel();
     ~Channel();
-    void SetFd(int fd);
-    int GetFd() const;
-    void SetEvents(uint32_t events);
-    uint32_t GetEvents() const;
-    void SetReadHandle(const Callback &cb);
-    void SetWriteHandle(const Callback &cb);
-    void SetErrorHandle(const Callback &cb);
-    void SetCloseHandle(const Callback &cb);
-    void HandleEvent();
+    void SetFd(int fd);     // 设置连接套接字fd
+    int GetFd() const;      // 获取连接套接字fd
+    void SetEvents(uint32_t events);    // 设置连接监听事件epoll_event
+    uint32_t GetEvents() const;         // 获取连接事件epoll_event
+    void SetReadHandle(const Callback &cb); //设置数据读取函数
+    void SetWriteHandle(const Callback &cb);// 设置写事件函数
+    void SetErrorHandle(const Callback &cb);// 设置出错处理函数
+    void SetCloseHandle(const Callback &cb);// 设置连接关闭函数
+    void HandleEvent();     // 执行连接事件
 
 private:
     int fd_;                // 连接套接字描述符
@@ -77,7 +77,7 @@ int Channel::GetFd() const
 }
 
 /*
- * 设置连接事件epoll_event
+ * 设置连接监听事件epoll_event
  * 
  */
 void Channel::SetEvents(uint32_t events)

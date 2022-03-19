@@ -88,7 +88,7 @@ TcpServer::~TcpServer()
  */
 void TcpServer::Start()
 {
-    eventLoopThreadPool.Start();    // 创建所需的所有子线程实例
+    eventLoopThreadPool.Start();    // 创建所需的所有事件池子线程实例
     tcpServerChannel_.SetEvents(EPOLLIN | EPOLLET);     // 设置当前连接的监听事件
     mainLoop_->AddChannelToPoller(&tcpServerChannel_);  // 主事件池添加当前Channel为监听对象
 }

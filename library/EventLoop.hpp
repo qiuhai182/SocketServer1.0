@@ -77,6 +77,7 @@ EventLoop::EventLoop()
     // wakeUpChannel_.SetReadHandle(std::bind(&EventLoop::HandleRead, this));
     // wakeUpChannel_.SetErrorHandle(std::bind(&EventLoop::HandleError, this));
     // AddChannelToPoller(&wakeUpChannel_);
+    std::cout << "创建一个EventLoop" << std::endl; 
 }
 
 EventLoop::~EventLoop()
@@ -213,7 +214,7 @@ void EventLoop::loop()
         poller_.poll(activeChannelList_);
         for (Channel *pchannel : activeChannelList_)
         {
-            std::cout << "one connection, fd = " << pchannel->GetFd() << std::endl;
+            std::cout << std::endl << "one connection, sockfd = " << pchannel->GetFd() << std::endl;
             pchannel->HandleEvent();
         }
         activeChannelList_.clear();

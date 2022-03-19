@@ -154,7 +154,6 @@ void TimerManager::RemoveTimerFromTimeWheel(Timer *ptimer)
     int timeslot = ptimer->timeSlot;
     if (ptimer == timeWheel[timeslot])
     {
-        // 头结点
         timeWheel[timeslot] = ptimer->next;
         if (ptimer->next != nullptr)
         {
@@ -206,19 +205,18 @@ void TimerManager::CalculateTimer(Timer *ptimer)
 {
     if (ptimer == nullptr)
         return;
-    int tick = 0;
-    int timeout = ptimer->timeOut_; // 定时器超时时长
-    if (timeout < slotInterval)
+    if (ptimer->timeOut_ < slotInterval)
     {
-        tick = 1;
+        // 需要等待的轮数
+        ptimer->rotation = 1 / slotNum;
+        ptimer->timeSlot = (currentSlot + 1) % slotNum;
     }
     else
     {
-        tick = timeout / slotInterval;
+        // 需要等待的轮数
+        ptimer->rotation = (ptimer->timeOut_ / slotInterval) / slotNum;
+        ptimer->timeSlot = (currentSlot + (ptimer->timeOut_ / slotInterval)) % slotNum;
     }
-    ptimer->rotation = tick / slotNum;  // 需要等待的轮数
-    int timeslot = (currentSlot + tick) % slotNum;
-    ptimer->timeSlot = timeslot;
 }
 
 /*
@@ -270,7 +268,6 @@ void TimerManager::CheckTimer()
  */
 void TimerManager::CheckTick()
 {
-    std::cout << "时间轮线程启动" << std::endl;
     //  steady_clock::time_point t1 = steady_clock::now();
     //  steady_clock::time_point t2 = steady_clock::now();
     //  duration<double> time_span;
@@ -278,7 +275,7 @@ void TimerManager::CheckTick()
     struct timeval tv;
     gettimeofday(&tv, NULL);
     int oldtime = (tv.tv_sec % 10000) * 1000 + tv.tv_usec / 1000;
-    std::cout << "oldtime: " << oldtime << ", sec: " << tv.tv_sec << ", usec: " << tv.tv_usec << std::endl;
+    std::cout << "时间轮工作线程启动，ms：" << oldtime << ", s: " << tv.tv_sec << ", us: " << tv.tv_usec << std::endl;
     int time;
     int tickcount;
     while (running_)

@@ -30,7 +30,7 @@ private:
 EventLoopThread::EventLoopThread()
     : childThread_(),
       curThreadId_(-1),
-      threadName_("IO thread "),
+      threadName_(""),
       loop_(NULL)
 {
 }
@@ -74,7 +74,7 @@ void EventLoopThread::ThreadFunc()
     std::stringstream sin;
     sin << curThreadId_;
     threadName_ += sin.str();
-    std::cout << "特殊工作线程" << threadName_ << "启动" << std::endl;
+    std::cout << "事件池工作线程：" << threadName_ << " 启动" << std::endl;
     try
     {
         // 启动事件池循环监听
@@ -84,7 +84,7 @@ void EventLoopThread::ThreadFunc()
     {
         std::cerr << "bad_alloc caught in EventLoopThread::ThreadFunc loop: " << ba.what() << '\n';
     }
-    std::cout << "特殊工作线程" << threadName_ << "退出" << std::endl;
+    std::cout << "事件池工作线程" << threadName_ << " 退出" << std::endl;
 }
 
 

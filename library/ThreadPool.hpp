@@ -137,7 +137,7 @@ void ThreadPool::ThreadFunc()
     std::thread::id tid = std::this_thread::get_id();
     std::stringstream sin;
     sin << tid;
-    std::cout << "工作线程: " << tid << "启动" << std::endl;
+    std::cout << "线程池工作线程: " << tid << " 启动" << std::endl;
     Task task;
     while (started_)
     {
@@ -155,7 +155,7 @@ void ThreadPool::ThreadFunc()
             {
                 break;
             }
-            std::cout << "工作线程: " << tid << "已唤醒，现有待处理任务数量: " << taskQueue_.size() << std::endl;
+            std::cout << "线程池工作线程: " << tid << " 已唤醒，现有待处理任务数量: " << taskQueue_.size() << std::endl;
             // 取出队头待处理任务
             task = taskQueue_.front();
             taskQueue_.pop();
@@ -175,7 +175,7 @@ void ThreadPool::ThreadFunc()
     }
     if (!started_)
     {
-        std::cout << "工作子线程：" << tid << "结束" << std::endl;
+        std::cout << "线程池工作线程：" << tid << " 结束" << std::endl;
     }
 }
 

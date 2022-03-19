@@ -76,7 +76,7 @@ TcpConnection::TcpConnection(EventLoop *loop, int fd, const struct sockaddr_in &
       bufferIn_(),
       bufferOut_()
 {
-    // 注册事件执行函数
+    // 基于Channel设置TcpConnection服务函数，在Channel内触发调用TcpConnectionr的成员函数，类似于信号槽机制
     spChannel_->SetFd(fd_);
     spChannel_->SetEvents(EPOLLIN | EPOLLET);
     spChannel_->SetReadHandle(std::bind(&TcpConnection::HandleRead, this));
