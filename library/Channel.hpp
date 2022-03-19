@@ -2,8 +2,7 @@
 // Channel类（类似一个session）：
 //  承载一个事件的套接字描述符fd和读写等事件events的连接控制类
 //  与epoll_event直接交互
-//  每一个连接对应生成一个Channel实例，并为之动态绑定
-//  套接字描述符、事件events等
+//  每一个连接对应生成一个Channel实例，并为之动态绑定套接字描述符、事件events等
 
 //  EPOLLIN：   表示对应的文件描述符可以读（包括对端SOCKET正常关闭）；
 //  EPOLLOUT：  表示对应的文件描述符可以写；

@@ -37,14 +37,14 @@ int main(int argc, char *argv[])
 
     // 默认初始化参数
     int port = 8000;         // 服务端口
-    int iothreadnum = 4;     // IO线程数
-    int workerthreadnum = 4; // 工作线程数
+    int iothreadnum = 0;     // EventLoop工作线程数量
+    int workerthreadnum = 4; // 线程池工作线程数量
     if (argc == 4)
     {
         // 启动初始化参数
         port = atoi(argv[1]);
-        iothreadnum = atoi(argv[2]);
-        workerthreadnum = atoi(argv[3]);
+        iothreadnum = atoi(argv[2]);        // EventLoop工作线程数量
+        workerthreadnum = atoi(argv[3]);    // 线程池工作线程数量
     }
 
     EventLoop loop;

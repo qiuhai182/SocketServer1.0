@@ -21,6 +21,7 @@
 
 int recvn(int fd, std::string &bufferin);
 int sendn(int fd, std::string &bufferout);
+
 class TcpConnection : public std::enable_shared_from_this<TcpConnection>
 { // 允许安全使用shared_ptr
 public:

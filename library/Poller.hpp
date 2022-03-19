@@ -129,7 +129,6 @@ void Poller::poll(ChannelList &activeChannelList)
     for (int i = 0; i < nfds; ++i)
     {
         int events = eventList_[i].events;
-        // int fd = eventList_[i].data.fd;
         // 类型转换为Channel指针类型
         Channel *pchannel = (Channel *)eventList_[i].data.ptr;
         int fd = pchannel->GetFd();
@@ -155,5 +154,5 @@ void Poller::poll(ChannelList &activeChannelList)
         std::cout << "resize:" << nfds << std::endl;
         eventList_.resize(nfds * 2);
     }
-    // eventList_.clear();
+    eventList_.clear();
 }
