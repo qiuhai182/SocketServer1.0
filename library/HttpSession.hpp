@@ -212,7 +212,7 @@ void HttpSession::HttpProcess(const HttpRequestContext &httprequestcontext, std:
         std::string filetype("text/html");
         responsebody = ("hello world");
         responsecontext += httprequestcontext.version + " 200 OK\r\n";
-        responsecontext += "Server: Chen Shuaihao's NetServer/0.1\r\n";
+        responsecontext += "Server: Qiu Hai's NetServer/0.1\r\n";
         responsecontext += "Content-Type: " + filetype + "; charset=utf-8\r\n";
         if (iter != httprequestcontext.header.end())
         {
@@ -277,7 +277,7 @@ void HttpSession::HttpError(const int err_num, const std::string short_msg, cons
     responsebody += "<style>body{background-color:#f;font-size:14px;}h1{font-size:60px;color:#eeetext-align:center;padding-top:30px;font-weight:normal;}</style>";
     responsebody += "<body bgcolor=\"ffffff\"><h1>";
     responsebody += std::to_string(err_num) + " " + short_msg;
-    responsebody += "</h1><hr><em> Chen Shuaihao's NetServer</em>\n</body></html>";
+    responsebody += "</h1><hr><em> Qiu Hai's NetServer</em>\n</body></html>";
     std::string httpversion;
     if (httprequestcontext.version.empty())
     {
@@ -288,7 +288,7 @@ void HttpSession::HttpError(const int err_num, const std::string short_msg, cons
         httpversion = httprequestcontext.version;
     }
     responsecontext += httpversion + " " + std::to_string(err_num) + " " + short_msg + "\r\n";
-    responsecontext += "Server: Chen Shuaihao's NetServer/0.1\r\n";
+    responsecontext += "Server: Qiu Hai's NetServer/0.1\r\n";
     responsecontext += "Content-Type: text/html\r\n";
     responsecontext += "Connection: Keep-Alive\r\n";
     responsecontext += "Content-Length: " + std::to_string(responsebody.size()) + "\r\n";

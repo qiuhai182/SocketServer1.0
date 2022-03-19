@@ -61,7 +61,7 @@ HttpServer::~HttpServer()
 /*
  * HttpServer模式处理新连接
  * 创建新连接对应的HttpSession、Timer
- * 并添加到httpSessionnList_、timerList_列表内存储
+ * 并添加到httpSessionnList_、timerList_容器内存储
  * 
  */
 void HttpServer::HandleNewConnection(const spTcpConnection &sptcpconn)

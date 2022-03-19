@@ -24,7 +24,7 @@ public:
     int timeOut_;           // 超时时间
     TimerType timerType_;   // 定时器类型
     CallBack timerCallBack_;// 触发函数
-    int rotation;   // 定时器剩下的转数
+    int rotation;   // 定时器仍需等待的轮数
     int timeSlot;   // 
     Timer *prev;    // 
     Timer *next;    // 

@@ -50,7 +50,7 @@ private:
     static const int slotInterval;  // 
     static const int slotNum;       // 时间轮定时器最大数量
     std::thread th_;    // 工作子线程
-    void CheckTimer();  // 时间轮检查超时任务，执行当前slot的任务
+    void CheckTimer();  // 时间轮检查超时任务，超时即可执行当前slot的任务
     void CheckTick();   // 线程回调函数，线程实际执行任务的函数
     void CalculateTimer(Timer *ptimer);         // 计算定时器参数timeSlot、rotation
     void AddTimerToTimeWheel(Timer *ptimer);    // 添加一个定时器任务到定时器列表timeWheel（时间轮）
@@ -111,6 +111,7 @@ void TimerManager::AddTimer(Timer *ptimer)
 
 /*
  * 添加一个定时器任务到定时器列表timeWheel
+ * 根据timeSlot指定在列表中的位置
  * 
  */
 void TimerManager::AddTimerToTimeWheel(Timer *ptimer)
@@ -206,7 +207,7 @@ void TimerManager::CalculateTimer(Timer *ptimer)
     if (ptimer == nullptr)
         return;
     int tick = 0;
-    int timeout = ptimer->timeOut_;
+    int timeout = ptimer->timeOut_; // 定时器超时时长
     if (timeout < slotInterval)
     {
         tick = 1;
@@ -215,13 +216,13 @@ void TimerManager::CalculateTimer(Timer *ptimer)
     {
         tick = timeout / slotInterval;
     }
-    ptimer->rotation = tick / slotNum;
+    ptimer->rotation = tick / slotNum;  // 需要等待的轮数
     int timeslot = (currentSlot + tick) % slotNum;
     ptimer->timeSlot = timeslot;
 }
 
 /*
- * 时间轮检查超时任务
+ * 时间轮检查任务是否可执行
  * 执行当前slot的任务
  * 
  */
@@ -254,7 +255,7 @@ void TimerManager::CheckTimer()
                 AdjustTimerToWheel(ptemptimer);
                 if (currentSlot == ptemptimer->timeSlot && ptemptimer->rotation > 0)
                 {
-                    // 如果定时器多于一转的话，需要先对rotation减1，否则会等待两个周期
+                    // 每经历一轮，需等待轮数-1
                     --ptemptimer->rotation;
                 }
             }
@@ -269,6 +270,7 @@ void TimerManager::CheckTimer()
  */
 void TimerManager::CheckTick()
 {
+    std::cout << "时间轮线程启动" << std::endl;
     //  steady_clock::time_point t1 = steady_clock::now();
     //  steady_clock::time_point t2 = steady_clock::now();
     //  duration<double> time_span;
@@ -288,6 +290,7 @@ void TimerManager::CheckTick()
         oldtime = oldtime + tickcount * slotInterval;
         for (int i = 0; i < tickcount; ++i)
         {
+            // 检查每个定时器任务，超时即可执行
             TimerManager::GetTimerManagerInstance()->CheckTimer();
         }
         std::this_thread::sleep_for(std::chrono::microseconds(500)); // milliseconds(si)时间粒度越小，延时越不精确，因为上下文切换耗时

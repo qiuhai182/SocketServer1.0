@@ -37,7 +37,7 @@ public:
     typedef std::function<void()> Task;
     ThreadPool(int threadnum = 0);
     ~ThreadPool();
-    void Start();           // 标志为运行状态，创建threadNum_个子线程作为工作线程
+    void Start();           // 标志为运行状态，创建threadNum_个子线程作为工作线程并启动线程
     void Stop();            // 标志为停止运行状态，唤醒所有线程，线程分离异步运行，清空线程池
     void AddTask(Task task);// 添加一个任务到任务列表taskQueue_，随机唤醒一个工作线程执行一个任务
     void ThreadFunc();      // 线程回调函数，单次遍历，加锁取出taskQueue_的一个任务并执行
@@ -79,6 +79,7 @@ ThreadPool::~ThreadPool()
 
 /*
  * 标志为运行状态，创建threadNum_个子线程作为工作线程
+ * 堆内创建线程，线程创建直接运行
  * 
  */
 void ThreadPool::Start()
@@ -105,7 +106,9 @@ void ThreadPool::Stop()
     for (auto i : threadList_)
     {
         // 线程分离，异步线程
+        std::cout << "启动并分离线程：" << i << std::endl;
         i->detach();
+        // i->join();
     }
     threadList_.clear();
 }
