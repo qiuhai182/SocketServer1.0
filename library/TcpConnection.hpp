@@ -51,7 +51,7 @@ public:
 private:
     EventLoop *loop_;   // 事件池
     std::unique_ptr<Channel> spChannel_;    // 连接Channel实例
-    int fd_;    // 连接套接字描述符
+    int fd_;    // 客户端连接套接字描述符
     struct sockaddr_in clientAddr_; // 连接信息结构体
     bool disConnected_;     // 连接断开标志位
     bool halfClose_;        // 半关闭标志位

@@ -107,7 +107,7 @@ bool HttpSession::ParseHttpRequest(std::string &msg, HttpRequestContext &httpreq
     size_t prev = 0, next = 0, pos_colon;
     std::string key, value;
     bool parseresult = false;
-    //以下解析可以改成状态机，解决一次收Http报文不完整问题
+    //TODO以下解析可以改成状态机，解决一次收Http报文不完整问题
     if ((next = msg.find(crlf, prev)) != std::string::npos)
     {
         std::string first_line(msg.substr(prev, next - prev));

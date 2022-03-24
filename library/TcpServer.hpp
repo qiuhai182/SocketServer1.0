@@ -45,7 +45,7 @@ public:
 
 private:
     std::mutex mutex_;
-    Socket tcpServerSocket_;        // 套接字描述符
+    Socket tcpServerSocket_;        // 服务监听套接字描述符
     Channel tcpServerChannel_;      // 连接Channel实例
     EventLoop *mainLoop_;           // 事件池主逻辑控制实例
     int connCount_;                 // 连接计数
@@ -83,7 +83,8 @@ TcpServer::~TcpServer()
 }
 
 /*
- * 创建所需的事件池子线程，添加tcp服务Channel实例为监听对象
+ * 创建所需的事件池子线程并启动
+ * 添加tcp服务Channel实例为监听对象
  * 
  */
 void TcpServer::Start()
@@ -148,16 +149,19 @@ void TcpServer::OnNewConnection()
     int clientfd;
     while ((clientfd = tcpServerSocket_.Accept(clientaddr)) > 0)
     {
-        std::cout << "TceServer accept new client from IP:" << inet_ntoa(clientaddr.sin_addr)
+        std::cout << "TceServer->TcpConnection->Channel handle new connection from IP:" << inet_ntoa(clientaddr.sin_addr)
                   << ":" << ntohs(clientaddr.sin_port) << std::endl;
         if (++connCount_ >= MAXCONNECTION)
         {
-            // 连接超量
+            // 连接超量 TODO connCount_需要-1，检查是否做了
             close(clientfd);
             continue;
         }
         Setnonblocking(clientfd);
-        EventLoop *loop = eventLoopThreadPool.GetNextLoop();    // 从多线程事件池获取一个事件池索引
+        // 从多线程事件池获取一个事件池索引，该事件池可能是主事件池
+        // 也可能是事件池工作线程
+        // 无论是哪一种，在运行期间都会循环调用loop的poll监听直至服务关闭
+        EventLoop *loop = eventLoopThreadPool.GetNextLoop();
         // 创建连接抽象类实例TcpConnection
         std::shared_ptr<TcpConnection> sptcpconnection = std::make_shared<TcpConnection>(loop, clientfd, clientaddr);
         // 基于TcpConnection设置TcpServer服务函数，在TcpConnection内触发调用TcpServer的成员函数，类似于信号槽机制

@@ -24,7 +24,7 @@ public:
     typedef std::shared_ptr<Timer> spTimer;
     HttpServer(EventLoop *loop, const int port, const int iothreadnum, const int workerthreadnum);
     ~HttpServer();
-    void Start();   // tcpServer创建所需的事件池子线程，添加tcp服务Channel实例为监听对象
+    void Start();   // tcpServer创建所需的事件池子线程并启动，添加tcp服务Channel实例为监听对象
 
 private:
     std::mutex mutex_;
@@ -172,8 +172,8 @@ void HttpServer::HandleError(const spTcpConnection &sptcpconn)
 }
 
 /*
- * tcpServer创建所需的事件池子线程
- * 添加tcp服务Channel实例为监听对象
+ * tcpServer创建所需的事件池监听子线程并启动
+ * 添加tcpServer的Channel实例为监听对象
  * 
  */
 void HttpServer::Start()
