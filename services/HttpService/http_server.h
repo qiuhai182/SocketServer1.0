@@ -1,5 +1,8 @@
 #pragma once
 
+#ifndef _HTTP_SERVER_H_
+#define _HTTP_SERVER_H_
+
 #include <signal.h>
 #include "../../library/EventLoop.hpp"
 #include "../../library/EchoServer.hpp"
@@ -24,3 +27,6 @@ static void sighandler2(int sig_no)
 {
     lp->Quit();
 }
+
+
+#endif

@@ -49,6 +49,7 @@
 #include <string>
 #include <sstream>
 #include <map>
+#include "Resource.hpp"
 
 // http请求信息结构
 typedef struct _HttpRequestContext
@@ -179,6 +180,7 @@ void HttpSession::HttpProcess(const HttpRequestContext &httprequestcontext, std:
     size_t pos = httprequestcontext.url.find("?");
     if (pos != std::string::npos)
     {
+        // 请求链接包含?，获取'?'以前的path以及'?'以后的querystring
         path = httprequestcontext.url.substr(0, pos);
         querystring = httprequestcontext.url.substr(pos + 1);
     }
@@ -186,14 +188,16 @@ void HttpSession::HttpProcess(const HttpRequestContext &httprequestcontext, std:
     {
         path = httprequestcontext.url;
     }
-    // keepalive判断处理
+    // keepalive判断处理，包含Connection字段
     std::map<std::string, std::string>::const_iterator iter = httprequestcontext.header.find("Connection");
     if (iter != httprequestcontext.header.end())
     {
+        // Connection字段值为Keep-Alive则保持长连接
         keepalive_ = (iter->second == "Keep-Alive");
     }
     else
     {
+        // 不包含Keep-Alive字段，根据协议版本判断是否需要长连接
         if (httprequestcontext.version == "HTTP/1.1")
         {
             keepalive_ = true; // HTTP/1.1默认长连接
@@ -205,7 +209,8 @@ void HttpSession::HttpProcess(const HttpRequestContext &httprequestcontext, std:
     }
     if ("/" == path)
     {
-        path = "/index.html";
+        // 默认访问index.html页面
+        path = wwwRoot + "index.html";
     }
     else if ("/hello" == path)
     {
@@ -223,7 +228,6 @@ void HttpSession::HttpProcess(const HttpRequestContext &httprequestcontext, std:
         responsecontext += responsebody;
         return;
     }
-    path.insert(0, ".");
     FILE *fp = NULL;
     if ((fp = fopen(path.c_str(), "rb")) == NULL)
     {

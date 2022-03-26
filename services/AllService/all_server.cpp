@@ -25,16 +25,16 @@ int main(int argc, char *argv[])
     }
 
     EventLoop loop;
-    // HttpServer httpServer(&loop, port, iothreadnum, workerthreadnum);
-    // httpServer.Start();
-    // try
-    // {
-    //     loop.loop();
-    // }
-    // catch (std::bad_alloc &ba)
-    // {
-    //     std::cerr << "bad_alloc caught in ThreadPool::ThreadFunc task: " << ba.what() << '\n';
-    // }
+    HttpServer httpServer(&loop, port, iothreadnum, workerthreadnum);
+    httpServer.Start();
+    try
+    {
+        loop.loop();
+    }
+    catch (std::bad_alloc &ba)
+    {
+        std::cerr << "bad_alloc caught in ThreadPool::ThreadFunc task: " << ba.what() << '\n';
+    }
 
     // EventLoop loop;
     // EchoServer echoServer(&loop, port, iothreadnum);
