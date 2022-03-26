@@ -173,8 +173,9 @@ void HttpSession::HttpProcess(const HttpRequestContext &httprequestcontext, std:
     }
     else
     {
-        errormsg = "Method Not Implemented";
-        HttpError(501, "Method Not Implemented", httprequestcontext, responsecontext);
+        // 对其他方法不支持
+        errormsg = "不支持方法：" + httprequestcontext.method + " (Method Not Implemented)";
+        HttpError(501, errormsg.data(), httprequestcontext, responsecontext);
         return;
     }
     size_t pos = httprequestcontext.url.find("?");
@@ -214,6 +215,7 @@ void HttpSession::HttpProcess(const HttpRequestContext &httprequestcontext, std:
     }
     else if ("/hello" == path)
     {
+        // '/hello'处理为以下内容，作为参考
         std::string filetype("text/html");
         responsebody = ("hello world");
         responsecontext += httprequestcontext.version + " 200 OK\r\n";
@@ -231,8 +233,8 @@ void HttpSession::HttpProcess(const HttpRequestContext &httprequestcontext, std:
     FILE *fp = NULL;
     if ((fp = fopen(path.c_str(), "rb")) == NULL)
     {
-        //perror("error fopen");
-        //404 NOT FOUND
+        // 未定位到资源文件
+        std::cout << "未定位到资源：" << path << std::endl;
         HttpError(404, "Not Found", httprequestcontext, responsecontext);
         return;
     }
@@ -240,7 +242,7 @@ void HttpSession::HttpProcess(const HttpRequestContext &httprequestcontext, std:
     {
         char buffer[4096];
         memset(buffer, 0, sizeof(buffer));
-        while (fread(buffer, sizeof(buffer), 1, fp) == 1) //可以mmap内存映射优化
+        while (fread(buffer, sizeof(buffer), 1, fp) == 1) // 可以mmap内存映射优化
         {
             responsebody.append(buffer);
             memset(buffer, 0, sizeof(buffer));
