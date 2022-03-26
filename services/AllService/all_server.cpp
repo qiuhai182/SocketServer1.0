@@ -1,28 +1,5 @@
 
-#include <signal.h>
-#include "../library/EventLoop.hpp"
-#include "../library/EchoServer.hpp"
-#include "../library/HttpServer.hpp"
-
-EventLoop *lp; // 事件池指针
-
-/*
- * 信号处理函数，SIGUSR1->退出服务器程序
- *
- */
-static void sighandler1(int sig_no)
-{
-    exit(0);
-}
-
-/*
- * 信号处理函数，SIGUSR2->关闭服务
- *
- */
-static void sighandler2(int sig_no)
-{
-    lp->Quit();
-}
+#include "all_server.h"
 
 /*
  * main函数，服务程序入口函数
@@ -48,16 +25,16 @@ int main(int argc, char *argv[])
     }
 
     EventLoop loop;
-    HttpServer httpServer(&loop, port, iothreadnum, workerthreadnum);
-    httpServer.Start();
-    try
-    {
-        loop.loop();
-    }
-    catch (std::bad_alloc &ba)
-    {
-        std::cerr << "bad_alloc caught in ThreadPool::ThreadFunc task: " << ba.what() << '\n';
-    }
+    // HttpServer httpServer(&loop, port, iothreadnum, workerthreadnum);
+    // httpServer.Start();
+    // try
+    // {
+    //     loop.loop();
+    // }
+    // catch (std::bad_alloc &ba)
+    // {
+    //     std::cerr << "bad_alloc caught in ThreadPool::ThreadFunc task: " << ba.what() << '\n';
+    // }
 
     // EventLoop loop;
     // EchoServer echoServer(&loop, port, iothreadnum);

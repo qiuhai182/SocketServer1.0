@@ -9,9 +9,9 @@ set(CMAKE_CXX_FLAGS "-std=c++17")
 
 
 # 添加头文件
-include_directories(../library)
+include_directories(../../library)
 # 添加源文件
-aux_source_directory(../library SRC_DIRS_LIBRARY)
+aux_source_directory(../../library SRC_DIRS_LIBRARY)
 aux_source_directory(. SRC_DIRS_SERVICE)
 # 添加cmake所在目录及其子目录的所有.h头文件
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
@@ -37,20 +37,21 @@ include_directories(${CMAKE_CURRENT_BINARY_DIR})
 include(FindProtobuf)
 # 查找指定目录的proto文件编译生成的源文件和头文件，分别输出到变量PROTO_SRC和PROTO_HEADER
 protobuf_generate_cpp(PROTO_SRC PROTO_HEADER 
-                      ../protobuf/account/account.proto
-                      ../protobuf/common/common.proto
-                      ../protobuf/echo/echo.proto
-                      ../protobuf/fileupdown/fileupdown.proto
-                      ../protobuf/service/service.proto
-                      ../protobuf/character/character.proto
-                      ../protobuf/relationship/relationship.proto
+                      ../../protobuf/account/account.proto
+                      ../../protobuf/common/common.proto
+                      ../../protobuf/echo/echo.proto
+                      ../../protobuf/fileupdown/fileupdown.proto
+                      ../../protobuf/service/service.proto
+                      ../../protobuf/character/character.proto
+                      ../../protobuf/relationship/relationship.proto
                     )
 
 SET(CMAKE_BUILD_TYPE "Debug")
 
-add_executable(server server.cpp ${PROTO_HEADER} ${PROTO_SRC} ${SRC_DIRS_LIBRARY} ${SRC_DIRS_SERVICE})
+add_executable(server all_server.cpp ${PROTO_HEADER} ${PROTO_SRC} ${SRC_DIRS_LIBRARY} ${SRC_DIRS_SERVICE})
 # target_link_libraries(server ${BRPC_LIB} ${PROTOBUF_LIBRARIES} mysqlclient hiredis pthread)
 target_link_libraries(server ${BRPC_LIB} ${PROTOBUF_LIBRARIES} mysqlclient pthread)
 add_definitions(-w) # 忽略编译警告
+
 
 
