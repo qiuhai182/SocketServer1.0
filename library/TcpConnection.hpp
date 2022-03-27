@@ -115,14 +115,14 @@ void TcpConnection::AddChannelToLoop()
 void TcpConnection::Send(const std::string &s)
 {
     bufferOut_ += s; // 跨线程消息投递成功
-    // 判断当前线程是不是Loop IO线程
+    // 判断当前线程是不是Loop IO所在线程
     if (loop_->GetThreadId() == std::this_thread::get_id())
     {
         SendInLoop();
     }
     else
     {
-        // 当前线程为新开线程，异步调用结束
+        // 当前线程为新开线程
         asyncProcessing_ = false;
         // 跨线程调用,加入IO线程的任务队列，唤醒
         loop_->AddTask(std::bind(&TcpConnection::SendInLoop, shared_from_this())); 
@@ -424,26 +424,11 @@ int recvn(int fd, std::string &bufferin)
  */
 int sendn(int fd, std::string &bufferout)
 {
+    std::cout << "即将发送数据量为" << bufferout.length() << "的数据到某客户端" << std::endl;
     ssize_t nbyte = 0;
     int sendsum = 0;
-    // char buffer[BUFSIZE+1];
-    size_t length = 0;
-    // length = bufferout.copy(buffer, BUFSIZE, 0);
-    // buffer[length] = '\0';
-    //  if(bufferout.size() >= BUFSIZE)
-    //  {
-    //  	length =  BUFSIZE;
-    //  }
-    //  else
-    //  {
-    //  	length =  bufferout.size();
-    //  }
+    size_t length = bufferout.size() < BUFSIZE ? bufferout.size() : BUFSIZE;
     // 无拷贝优化
-    length = bufferout.size();
-    if (length >= BUFSIZE)
-    {
-        length = BUFSIZE;
-    }
     for (;;)
     {
         // nbyte = send(fd, buffer, length, 0);
@@ -451,6 +436,7 @@ int sendn(int fd, std::string &bufferout)
         nbyte = write(fd, bufferout.c_str(), length);
         if (nbyte > 0)
         {
+            // 循环发送数据到客户端
             sendsum += nbyte;
             bufferout.erase(0, nbyte);
             // length = bufferout.copy(buffer, BUFSIZE, 0);

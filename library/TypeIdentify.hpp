@@ -1,14 +1,14 @@
 #pragma once
 
-// #include <iostream>
 #include <map>
 #include <string>
+#include <mutex>
 
 
-// 根据后缀获取 content-type，需要先初始化
-// TODO 做成类，用构造函数即可
+// 根据后缀格式“.xx”获取对应文本类型
 
-std::pair<std::string, std::string> pairArray[] =
+
+const std::pair<std::string, std::string> pairArray[] =
 {
     std::make_pair(".load", "text/html"),
     std::make_pair(".123", "application/vnd.lotus-1-2-3"),
@@ -698,19 +698,46 @@ std::pair<std::string, std::string> pairArray[] =
     std::make_pair(".zip", "application/zip")
 };
 
-static std::map<std::string, std::string> contentType;
 
-static void initContentType()
+class TypeIdentify
 {
-    for (auto i : pairArray)
+public:
+    static std::string getContentType(std::string suffix)
     {
-        contentType.insert(std::make_pair(i.first, i.second));
+        // getTypeIdentifyInstance();
+        // return contentType[suffix];
+        return getTypeIdentifyInstance()->contentType[suffix];
     }
-}
 
-static std::string getContentType(std::string suffix)
-{
-    return contentType[suffix];
-}
+private:
+    TypeIdentify()
+    {
+        for (auto i : pairArray)
+        {
+            contentType.insert(std::make_pair(i.first, i.second));
+        }
+    }
+    ~TypeIdentify();
+    static TypeIdentify *getTypeIdentifyInstance()
+    {
+        if(!typeIdentify_)
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (!typeIdentify_)
+            {
+                typeIdentify_ = new TypeIdentify();
+            }
+        }
+        return typeIdentify_;
+    }
 
+    static std::mutex mutex_;
+    static TypeIdentify *typeIdentify_;
+    static std::map<std::string, std::string> contentType;
+    
+};
+
+std::mutex TypeIdentify::mutex_;
+TypeIdentify *TypeIdentify::typeIdentify_;
+std::map<std::string, std::string> TypeIdentify::contentType;
 

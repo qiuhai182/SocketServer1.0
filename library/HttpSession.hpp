@@ -49,7 +49,9 @@
 #include <string>
 #include <sstream>
 #include <map>
+#include <fstream>
 #include "Resource.hpp"
+#include "TypeIdentify.hpp"
 
 // http请求信息结构
 typedef struct _HttpRequestContext
@@ -96,6 +98,18 @@ HttpSession::HttpSession()
 
 HttpSession::~HttpSession()
 {
+}
+
+int getFileSize(char* file_name)
+{
+  // 获取文件大小	
+	FILE *fp=fopen(file_name,"r");
+	if(!fp)
+		return -1;
+	fseek(fp, 0, SEEK_END);
+	int size = ftell(fp);
+	fclose(fp);
+	return size;
 }
 
 /*
@@ -163,6 +177,7 @@ void HttpSession::HttpProcess(const HttpRequestContext &httprequestcontext, std:
     std::string errormsg;
     std::string path;
     std::string querystring;
+    std::string filetype("text/html"); // 默认资源文件类型
     if ("GET" == httprequestcontext.method)
     {
         ;
@@ -216,7 +231,6 @@ void HttpSession::HttpProcess(const HttpRequestContext &httprequestcontext, std:
     else if ("/hello" == path)
     {
         // '/hello'处理为以下内容，作为参考
-        std::string filetype("text/html");
         responsebody = ("hello world");
         responsecontext += httprequestcontext.version + " 200 OK\r\n";
         responsecontext += "Server: Qiu Hai's NetServer/0.1\r\n";
@@ -230,44 +244,93 @@ void HttpSession::HttpProcess(const HttpRequestContext &httprequestcontext, std:
         responsecontext += responsebody;
         return;
     }
+    else
+    {
+        // 为请求的网页资源加上正确的相对路径前缀
+        path = wwwRoot + path;
+    }
+    size_t point;
+    if ((point = path.rfind('.')) != std::string::npos)
+    {
+        // 判断请求资源文件类型
+        filetype = TypeIdentify::getContentType(path.substr(point));
+        if(filetype.empty())
+        {
+            // 无法识别资源文件类型
+            filetype = "text/html";
+        }
+    }
     FILE *fp = NULL;
     if ((fp = fopen(path.c_str(), "rb")) == NULL)
     {
         // 未定位到资源文件
-        std::cout << "未定位到资源：" << path << std::endl;
         HttpError(404, "Not Found", httprequestcontext, responsecontext);
         return;
     }
     else
     {
-        char buffer[4096];
-        memset(buffer, 0, sizeof(buffer));
-        while (fread(buffer, sizeof(buffer), 1, fp) == 1) // 可以mmap内存映射优化
+        // 读取并发送请求的资源文件
+        // const int IOBuf_MAX_SIZE = 253952;
+        const int IOBuf_MAX_SIZE = 4096;
+
+        // char buffer[IOBuf_MAX_SIZE];
+        // memset(buffer, 0, sizeof(buffer));
+        // while (fread(buffer, sizeof(buffer), 1, fp) == 1) // TODO 可以mmap内存映射优化
+        // {
+        //     responsebody.append(buffer);
+        //     memset(buffer, 0, sizeof(buffer));
+        //     // std::cout << "body.len=" << responsebody.length() << std::endl;
+        // }
+        // if (feof(fp))
+        // {
+        //     responsebody.append(buffer);
+        //     // std::cout << "body.len=" << responsebody.length() << std::endl;
+        //     // for(int i = 0; i < responsebody.length(); ++i)
+        //     // {
+        //     //     std::cout << i << " " << responsebody.data()[i] << " ";
+        //     // }
+        //     // std::cout << std::endl;
+        // }
+        // else
+        // {
+        //     std::cout << "error fread" << std::endl;
+        // }
+    
+        std::fstream tmpfile;
+        tmpfile.open(path.c_str(), std::ios::in | std::ios::binary | std::ios::ate); // 二进制输入(读取),定位到文件末尾
+        if (tmpfile.is_open())
         {
-            responsebody.append(buffer);
-            memset(buffer, 0, sizeof(buffer));
+            size_t length = tmpfile.tellg(); // 获取文件大小
+            tmpfile.seekg(0, std::ios::beg); // 定位到文件开始
+            char data[IOBuf_MAX_SIZE];
+            while (length >= IOBuf_MAX_SIZE)
+            {
+                tmpfile.read(data, IOBuf_MAX_SIZE);
+                responsebody.append(data);
+                length -= IOBuf_MAX_SIZE;
+            }
+            if (length > 0)
+            {
+                tmpfile.read(data, length);
+                responsebody.append(data);
+                length = 0;
+            }
+            std::cout << std::endl << "!!!!!len: " << sizeof(responsebody.data())/sizeof(char) << std::endl << responsebody.length() << std::endl << responsebody.size() << std::endl;
         }
-        if (feof(fp))
-        {
-            responsebody.append(buffer);
-        }
-        else
-        {
-            std::cout << "error fread" << std::endl;
-        }
+
         fclose(fp);
     }
-    std::string filetype("text/html"); //暂时固定为html
     responsecontext += httprequestcontext.version + " 200 OK\r\n";
-    responsecontext += "Server: Chen Shuaihao's NetServer/0.1\r\n";
+    responsecontext += "Server: QiuHai's NetServer/0.1\r\n";
     responsecontext += "Content-Type: " + filetype + "; charset=utf-8\r\n";
     if (iter != httprequestcontext.header.end())
     {
         responsecontext += "Connection: " + iter->second + "\r\n";
     }
-    responsecontext += "Content-Length: " + std::to_string(responsebody.size()) + "\r\n";
-    responsecontext += "\r\n";
+    // responsecontext += "Content-Length: " + std::to_string(getFileSize(path.data())) + "\r\n\r\n";
+    responsecontext += "Content-Length: " + std::to_string(responsebody.length()) + "\r\n\r\n";
     responsecontext += responsebody;
+
 }
 
 /*
