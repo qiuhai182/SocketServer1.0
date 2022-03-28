@@ -125,6 +125,7 @@ int getFileSize(char* file_name)
  */
 bool HttpSession::ParseHttpRequest(char *msg, int msgLength, HttpRequestContext &httprequestcontext)
 {
+    std::cout << "解析网络请求，输出测试：" << msgLength << std::endl;
     const char *crlf = "\r\n";
     const char *crlfcrlf = "\r\n\r\n";
     bool parseresult = false;
@@ -137,6 +138,7 @@ bool HttpSession::ParseHttpRequest(char *msg, int msgLength, HttpRequestContext 
         char *buffer;
         memcpy(buffer, preFind, nextFind - preFind);
         std::string first_line(buffer);
+        std::cout << "状态行：" << first_line << std::endl;
         preFind = nextFind;
         std::stringstream sstream(first_line);
         sstream >> (httprequestcontext.method);
@@ -162,6 +164,7 @@ bool HttpSession::ParseHttpRequest(char *msg, int msgLength, HttpRequestContext 
             key = buffer_key;
             memcpy(buffer_value, pos_colon + 2, nextFind - (pos_colon + 2));
             value = buffer_value;
+            std::cout << "key:value"<< key << ":" << value << std::endl;
             preFind = nextFind;
             httprequestcontext.header.insert(std::pair<std::string, std::string>(key, value));
         }
@@ -174,12 +177,15 @@ bool HttpSession::ParseHttpRequest(char *msg, int msgLength, HttpRequestContext 
         return parseresult;
     }
     char *buffer;
-    string conLen = httprequestcontext.header["Content-Length"];
+    std::cout << "输出测试：读取Content-Length" << std::endl;
+    std::string conLen = httprequestcontext.header["Content-Length"];
+    std::cout << "输出测试：读取Content-Length完毕" << std::endl;
     int contentLength = conLen.empty() ? msgLength - (pos_crlfcrlf + 4 - msg) : atoi(conLen.c_str());
     memcpy(buffer, pos_crlfcrlf + 4, contentLength);
     httprequestcontext.body.clear();
-    httprequestcontext.body.append(buffer, 0, contentLength));
+    httprequestcontext.body.append(buffer, 0, contentLength);
     parseresult = true;
+    std::cout << "输出测试：" << conLen << " " << contentLength << std::endl;
     return parseresult;
 }
 

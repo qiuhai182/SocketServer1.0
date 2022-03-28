@@ -48,7 +48,10 @@ public:
     void SetErrorCallback(const Callback &cb);          // 设置出错处理函数
     void SetConnectionCleanUp(const Callback &cb);      // 设置连接清空函数
     void SetAsyncProcessing(const bool asyncProcessing);// 设置异步处理标志
+    char *getBufferIn();        // 获取接收缓冲区的指针
+    char *getBufferOut();       // 获取发送缓冲区的指针
     int getReceiveLength();     // 获取接收到的数据的长度
+    int getSendLength();        // 获取待发送数据的长度
     int setSendMessage(const char *newMsg, const int msgLen = 0);   // 重置bufferOut_的内容
     int addSendMessage(const char *newMsg, const int msgLen = 0);   // 添加新数据到bufferOut_
 
@@ -81,7 +84,9 @@ TcpConnection::TcpConnection(EventLoop *loop, int fd, const struct sockaddr_in &
       disConnected_(false),
       asyncProcessing_(false),
       bufferIn_(nullptr),
-      bufferOut_(NULL)
+      bufferOut_(NULL),
+      bufferInLen_(0),
+      bufferOutLen_(0)
 {
     // 基于Channel设置TcpConnection服务函数，在Channel内触发调用TcpConnectionr的成员函数，类似于信号槽机制
     spChannel_->SetFd(fd_);
@@ -450,12 +455,34 @@ int TcpConnection::addSendMessage(const char *newMsg, const int msgLen)
 }
 
 /*
+ * 获取接收缓冲区的指针
+ * 
+ */
+char *TcpConnection::getBufferIn()
+{
+    if(!bufferIn_)
+    {
+        bufferIn_ = new char();
+    }
+    return bufferIn_;
+}
+
+/*
  * 获取接收到的数据的长度
  * 
  */
 int TcpConnection::getReceiveLength()
 {
-    return bufferInLen_;
+    return bufferOutLen_;
+}
+
+/*
+ * 获取接收到的数据的长度
+ * 
+ */
+int TcpConnection::getSendLength()
+{
+    return bufferOutLen_;
 }
 
 /*
@@ -464,6 +491,11 @@ int TcpConnection::getReceiveLength()
  */
 int recvn(int fd, char *recvMsg, int &msgLength)
 {
+    if(recvMsg)
+    {
+        delete recvMsg;
+    }
+    recvMsg = new char();
     int nbyte = 0;
     int readsum = 0;
     msgLength = 0;
@@ -471,6 +503,7 @@ int recvn(int fd, char *recvMsg, int &msgLength)
     {
         // nbyte = recv(fd, recvMsg, BUFSIZE, 0);
         nbyte = read(fd, recvMsg, BUFSIZE);
+        // std::cout << "输出测试：接受网络请求fd" << fd << " 接收到数据量：" << nbyte << " 数据内容：" << std::endl << recvMsg << std::endl;
         if (nbyte > 0)
         {
             readsum += nbyte;
@@ -512,7 +545,7 @@ int recvn(int fd, char *recvMsg, int &msgLength)
  * 发送数据到客户端
  * 
  */
-int sendn(int fd, const char *sendMsg, int &msgLength)
+int sendn(int fd, char *sendMsg, int &msgLength)
 {
     ssize_t nbyte = 0;
     int sendsum = 0;
