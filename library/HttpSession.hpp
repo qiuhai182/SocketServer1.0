@@ -48,10 +48,12 @@
 #include <iostream>
 #include <string>
 #include <sstream>
-#include <map>
 #include <fstream>
+#include <map>
 #include "Resource.hpp"
 #include "TypeIdentify.hpp"
+
+#define BUFSIZE 4096
 
 // http请求信息结构
 typedef struct _HttpRequestContext
@@ -70,7 +72,11 @@ typedef struct _HttpResponseContext
     std::string statecode;
     std::string statemsg;
     std::map<std::string, std::string> header;
-    std::string body;
+    char *body;
+    ~_HttpResponseContext()
+    {
+        delete body;
+    }
 } HttpResponseContext;
 
 class HttpSession
@@ -82,13 +88,14 @@ public:
     HttpSession();
     ~HttpSession();
     // 解析http请求信息
-    bool ParseHttpRequest(std::string &s, HttpRequestContext &httprequestcontext);  
+    bool ParseHttpRequest(char *s, int msgLength, HttpRequestContext &httprequestcontext);  
     // http请求处理与响应函数
     void HttpProcess(const HttpRequestContext &httprequestcontext, std::string &responsecontext);
     // 处理错误http请求，返回错误描述
     void HttpError(const int err_num, const std::string short_msg, const HttpRequestContext &httprequestcontext, std::string &responsecontext);
     // TODO
     bool KeepAlive();
+
 };
 
 HttpSession::HttpSession()
@@ -116,17 +123,21 @@ int getFileSize(char* file_name)
  * 解析http请求信息
  * 
  */
-bool HttpSession::ParseHttpRequest(std::string &msg, HttpRequestContext &httprequestcontext)
+bool HttpSession::ParseHttpRequest(char *msg, int msgLength, HttpRequestContext &httprequestcontext)
 {
-    std::string crlf("\r\n"), crlfcrlf("\r\n\r\n");
-    size_t prev = 0, next = 0, pos_colon;
-    std::string key, value;
+    const char *crlf = "\r\n";
+    const char *crlfcrlf = "\r\n\r\n";
     bool parseresult = false;
-    //TODO以下解析可以改成状态机，解决一次收Http报文不完整问题
-    if ((next = msg.find(crlf, prev)) != std::string::npos)
+    char *preFind = msg, *nextFind = NULL, *pos_colon = nullptr;
+    std::string key, value;
+    char *const pos_crlfcrlf = strstr(preFind, crlfcrlf);
+    // TODO 以下解析可以改成状态机，解决一次收Http报文不完整问题
+    if(nextFind = strstr(preFind, crlf))
     {
-        std::string first_line(msg.substr(prev, next - prev));
-        prev = next;
+        char *buffer;
+        memcpy(buffer, preFind, nextFind - preFind);
+        std::string first_line(buffer);
+        preFind = nextFind;
         std::stringstream sstream(first_line);
         sstream >> (httprequestcontext.method);
         sstream >> (httprequestcontext.url);
@@ -134,36 +145,41 @@ bool HttpSession::ParseHttpRequest(std::string &msg, HttpRequestContext &httpreq
     }
     else
     {
-        std::cout << "msg" << msg << std::endl;
-        std::cout << "Error in httpParser: http_request_line isn't complete!" << std::endl;
+        std::cout << "接收到信息：" << msg << std::endl;
+        std::cout << "Error in httpParser: http_request_line 不完整!" << std::endl;
         parseresult = false;
-        msg.clear();
         return parseresult;
         //可以临时存起来，凑齐了再解析
     }
-    size_t pos_crlfcrlf = 0;
-    if ((pos_crlfcrlf = msg.find(crlfcrlf, prev)) != std::string::npos)
+    if(pos_crlfcrlf)
     {
-        while (prev != pos_crlfcrlf)
+        while(pos_crlfcrlf != (nextFind = strstr(preFind, crlf)))
         {
-            next = msg.find(crlf, prev + 2);
-            pos_colon = msg.find(":", prev + 2);
-            key = msg.substr(prev + 2, pos_colon - prev - 2);
-            value = msg.substr(pos_colon + 2, next - pos_colon - 2);
-            prev = next;
+            // 仍在查询请求头部分
+            pos_colon = strstr(preFind + 2, ":");
+            char *buffer_key, *buffer_value;
+            memcpy(buffer_key, preFind + 2, pos_colon - (preFind + 2));
+            key = buffer_key;
+            memcpy(buffer_value, pos_colon + 2, nextFind - (pos_colon + 2));
+            value = buffer_value;
+            preFind = nextFind;
             httprequestcontext.header.insert(std::pair<std::string, std::string>(key, value));
         }
     }
     else
     {
-        std::cout << "Error in httpParser: http_request_header isn't complete!" << std::endl;
+        std::cout << "接收到信息：" << msg << std::endl;
+        std::cout << "Error in httpParser: http_request_header 不完整!" << std::endl;
         parseresult = false;
-        msg.clear();
         return parseresult;
     }
-    httprequestcontext.body = msg.substr(pos_crlfcrlf + 4);
+    char *buffer;
+    string conLen = httprequestcontext.header["Content-Length"];
+    int contentLength = conLen.empty() ? msgLength - (pos_crlfcrlf + 4 - msg) : atoi(conLen.c_str());
+    memcpy(buffer, pos_crlfcrlf + 4, contentLength);
+    httprequestcontext.body.clear();
+    httprequestcontext.body.append(buffer, 0, contentLength));
     parseresult = true;
-    msg.clear();
     return parseresult;
 }
 

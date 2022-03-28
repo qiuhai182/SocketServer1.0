@@ -32,7 +32,7 @@ class TcpServer
 {
 public:
     typedef std::shared_ptr<TcpConnection> spTcpConnection;
-    typedef std::function<void(const spTcpConnection &, std::string &)> MessageCallback;
+    typedef std::function<void(const spTcpConnection &, char *)> MessageCallback;    // 信息处理函数
     typedef std::function<void(const spTcpConnection &)> Callback;
     TcpServer(EventLoop *loop, const int port, const int threadnum = 0);
     ~TcpServer();

@@ -80,7 +80,7 @@ void HttpServer::HandleNewConnection(const spTcpConnection &sptcpconn)
  * HttpServer模式处理收到的请求
  * 
  */
-void HttpServer::HandleMessage(const spTcpConnection &sptcpconn, std::string &msg)
+void HttpServer::HandleMessage(const spTcpConnection &sptcpconn, char *msg)
 {
     std::shared_ptr<HttpSession> sphttpsession;
     spTimer sptimer;
@@ -92,7 +92,7 @@ void HttpServer::HandleMessage(const spTcpConnection &sptcpconn, std::string &ms
     }
     // 定时关闭连接
     sptimer->Adjust(5000, Timer::TimerType::TIMER_ONCE, std::bind(&TcpConnection::Shutdown, sptcpconn));
-    std::string responsecontext;
+    // std::string responsecontext;
     if (threadpool_.GetThreadNum() > 0)
     {
         // 已开启线程池，解析http请求，设置异步处理标志，线程池taskQueue_添加任务
