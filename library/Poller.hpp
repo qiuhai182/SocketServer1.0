@@ -126,7 +126,7 @@ void Poller::poll(ChannelList &activeChannelList)
         perror("epoll wait error");
     }
     if(nfds)
-        std::cout << "输出测试：Poller监听到" << nfds << "个连接事件待接受" << std::endl;
+        std::cout << "输出测试：Poller监听到" << nfds << "个已连接客户端的事件待处理" << std::endl;
     // 遍历获取每个网络请求事件
     for (int i = 0; i < nfds; ++i)
     {
