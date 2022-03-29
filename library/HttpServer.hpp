@@ -33,10 +33,10 @@ private:
     TcpServer tcpserver_;   // 基础网络服务TcpServer
     ThreadPool threadpool_; // 线程池
     void HandleNewConnection(const spTcpConnection &sptcpconn); // HttpServer模式处理新连接
-    void HandleMessage(const spTcpConnection &sptcpconn, std::string &msg); // HttpServer模式处理收到的请求
+    void HandleMessage(const spTcpConnection &sptcpconn);       // HttpServer模式处理收到的请求
     void HandleSendComplete(const spTcpConnection &sptcpconn);  // HttpServer模式数据发送客户端完毕
-    void HandleClose(const spTcpConnection &sptcpconn); // HttpServer模式处理连接断开
-    void HandleError(const spTcpConnection &sptcpconn); // HttpServer模式处理连接出错
+    void HandleClose(const spTcpConnection &sptcpconn);         // HttpServer模式处理连接断开
+    void HandleError(const spTcpConnection &sptcpconn);         // HttpServer模式处理连接出错
 
 };
 
@@ -46,7 +46,7 @@ HttpServer::HttpServer(EventLoop *loop, const int port, const int iothreadnum, c
 {
     // 基于TcpServer设置HttpServer服务函数，在TcpServer内触发调用HttpServer的成员函数，类似于信号槽机制
     tcpserver_.SetNewConnCallback(std::bind(&HttpServer::HandleNewConnection, this, std::placeholders::_1));
-    tcpserver_.SetMessageCallback(std::bind(&HttpServer::HandleMessage, this, std::placeholders::_1, std::placeholders::_2));
+    tcpserver_.SetMessageCallback(std::bind(&HttpServer::HandleMessage, this, std::placeholders::_1));
     tcpserver_.SetSendCompleteCallback(std::bind(&HttpServer::HandleSendComplete, this, std::placeholders::_1));
     tcpserver_.SetCloseCallback(std::bind(&HttpServer::HandleClose, this, std::placeholders::_1));
     tcpserver_.SetErrorCallback(std::bind(&HttpServer::HandleError, this, std::placeholders::_1));
@@ -80,7 +80,7 @@ void HttpServer::HandleNewConnection(const spTcpConnection &sptcpconn)
  * HttpServer模式处理收到的请求
  * 
  */
-void HttpServer::HandleMessage(const spTcpConnection &sptcpconn, std::string &msg)
+void HttpServer::HandleMessage(const spTcpConnection &sptcpconn)
 {
     std::shared_ptr<HttpSession> sphttpsession;
     spTimer sptimer;
@@ -97,7 +97,8 @@ void HttpServer::HandleMessage(const spTcpConnection &sptcpconn, std::string &ms
     {
         // 已开启线程池，解析http请求，设置异步处理标志，线程池taskQueue_添加任务
         HttpRequestContext httprequestcontext;
-        bool result = sphttpsession->ParseHttpRequest(msg, httprequestcontext);
+        // bool result = sphttpsession->ParseHttpRequest(sptcpconn->getBufferIn().data(), sptcpconn->getReceiveLength(), httprequestcontext);
+        bool result = sphttpsession->ParseHttpRequest(sptcpconn->getBufferIn(), httprequestcontext);
         if (result == false)
         {
             sphttpsession->HttpError(400, "Bad request", httprequestcontext, responsecontext);
@@ -121,7 +122,7 @@ void HttpServer::HandleMessage(const spTcpConnection &sptcpconn, std::string &ms
     {
         // 没有开启线程池
         HttpRequestContext httprequestcontext;
-        bool result = sphttpsession->ParseHttpRequest(msg, httprequestcontext);
+        bool result = sphttpsession->ParseHttpRequest(sptcpconn->getBufferIn(), httprequestcontext);
         if (result == false)
         {
             sphttpsession->HttpError(400, "Bad request", httprequestcontext, responsecontext); // 请求报文解析错误，报400

@@ -19,20 +19,20 @@
 
 #define BUFSIZE 4096
 
-int recvn(int fd, std::string &bufferin);
-int sendn(int fd, std::string &bufferout);
+int recvn(int fd, std::string &recvMsg);
+int sendn(int fd, std::string &sendMsg);
 
 class TcpConnection : public std::enable_shared_from_this<TcpConnection>
 { // 允许安全使用shared_ptr
 public:
     typedef std::shared_ptr<TcpConnection> spTcpConnection; // 指向TcpConnection的智能指针
     typedef std::function<void(const spTcpConnection &)> Callback; // 回调函数
-    typedef std::function<void(const spTcpConnection &, std::string &)> MessageCallback;    // 信息处理函数
     TcpConnection(EventLoop *loop, int fd, const struct sockaddr_in &clientaddr);
     ~TcpConnection();
     int fd() const { return fd_; }  // 获取套接字描述符
-    EventLoop *GetLoop() const { return loop_; } // 获取事件池指针
-    void Send(const std::string &s);    // 发送信息函数，指定EventLoop执行
+    EventLoop *GetLoop() const { return loop_; }// 获取事件池指针
+    void Send(const std::string &s);            // 发送信息函数，指定EventLoop执行
+    void Send(const char *s, int length = 0);   // 发送信息函数，指定EventLoop执行
     void SendInLoop();          // 发送信息函数，由EventLoop执行
     void AddChannelToLoop();    // EventLoop添加监听Channel
     void Shutdown();            // 关闭当前连接，指定EventLoop执行
@@ -41,7 +41,13 @@ public:
     void HandleWrite();         // 向客户端发送数据
     void HandleError();         // 处理连接错误
     void HandleClose();         // 处理客户端连接关闭
-    void SetMessaeCallback(const MessageCallback &cb);  // 设置连接处理函数
+    std::string &getBufferIn(); // 获取接收缓冲区的指针
+    std::string &getBufferOut();// 获取发送缓冲区的指针
+    int getReceiveLength();     // 获取接收到的数据的长度
+    int getSendLength();        // 获取待发送数据的长度
+    int setSendMessage(const std::string &newMsg);      // 重置bufferOut_的内容
+    int addSendMessage(const std::string &newMsg);      // 添加新数据到bufferOut_
+    void SetMessaeCallback(const Callback &cb);  // 设置连接处理函数
     void SetSendCompleteCallback(const Callback &cb);   // 设置数据发送完毕处理函数
     void SetCloseCallback(const Callback &cb);          // 设置关闭处理函数
     void SetErrorCallback(const Callback &cb);          // 设置出错处理函数
@@ -51,18 +57,18 @@ public:
 private:
     EventLoop *loop_;   // 事件池
     std::unique_ptr<Channel> spChannel_;    // 连接Channel实例
-    int fd_;    // 客户端连接套接字描述符
+    int fd_;            // 客户端连接套接字描述符
     struct sockaddr_in clientAddr_; // 连接信息结构体
-    bool disConnected_;     // 连接断开标志位
-    bool halfClose_;        // 半关闭标志位
-    bool asyncProcessing_;  // 异步调用标志位，当工作任务交给线程池时，置为true，任务完成回调时置为false
-    std::string bufferIn_;  // 
-    std::string bufferOut_; // 
-    MessageCallback messageCallback_;   // 
-    Callback sendcompleteCallback_;     // 
-    Callback closeCallback_;            // 
-    Callback errorCallback_;            // 
-    Callback connectioncleanup_;        // 
+    bool disConnected_;             // 连接断开标志位
+    bool halfClose_;                // 半关闭标志位
+    bool asyncProcessing_;          // 异步调用标志位，当工作任务交给线程池时，置为true，任务完成回调时置为false
+    std::string bufferIn_;          // 接收数据缓冲区
+    std::string bufferOut_;         // 发送数据缓冲区
+    Callback messageCallback_;      // 
+    Callback sendcompleteCallback_; // 
+    Callback closeCallback_;        // 
+    Callback errorCallback_;        // 
+    Callback connectioncleanup_;    // 
 
 };
 
@@ -114,15 +120,43 @@ void TcpConnection::AddChannelToLoop()
  */
 void TcpConnection::Send(const std::string &s)
 {
-    bufferOut_ += s; // 跨线程消息投递成功
-    // 判断当前线程是不是Loop IO线程
+    bufferOut_ = s;
+    // 判断当前线程是不是Loop IO所在线程
     if (loop_->GetThreadId() == std::this_thread::get_id())
     {
         SendInLoop();
     }
     else
     {
-        // 当前线程为新开线程，异步调用结束
+        // 当前线程为新开线程
+        asyncProcessing_ = false;
+        // 跨线程调用,加入IO线程的任务队列，唤醒
+        loop_->AddTask(std::bind(&TcpConnection::SendInLoop, shared_from_this())); 
+    }
+}
+
+/*
+ * 发送信息函数，指定EventLoop执行
+ * 传递的数据为char*类型，若不指定数据长度，会被第一个'\0'截断
+ * 
+ */
+void TcpConnection::Send(const char *s, int length)
+{
+    if(!length)
+    {
+        // 缺省默认长度为0，只能用strlen函数计算s的长度，这会被第一个'\0'截断
+        length = strlen(s);
+    }
+    bufferOut_.clear();
+    bufferOut_.append(s, length);
+    // 判断当前线程是不是Loop IO所在线程
+    if (loop_->GetThreadId() == std::this_thread::get_id())
+    {
+        SendInLoop();
+    }
+    else
+    {
+        // 当前线程为新开线程
         asyncProcessing_ = false;
         // 跨线程调用,加入IO线程的任务队列，唤醒
         loop_->AddTask(std::bind(&TcpConnection::SendInLoop, shared_from_this())); 
@@ -135,7 +169,6 @@ void TcpConnection::Send(const std::string &s)
  */
 void TcpConnection::SendInLoop()
 {
-    // bufferOut_ += s;// copy一次
     if (disConnected_)
     {
         return;
@@ -144,7 +177,7 @@ void TcpConnection::SendInLoop()
     if (result > 0)
     {
         uint32_t events = spChannel_->GetEvents();
-        if (bufferOut_.size() > 0)
+        if (!bufferOut_.empty())
         {
             // 缓冲区满了，数据没发完，就设置EPOLLOUT事件触发
             spChannel_->SetEvents(events | EPOLLOUT);
@@ -208,12 +241,12 @@ void TcpConnection::ShutdownInLoop()
  */
 void TcpConnection::HandleRead()
 {
-    // 接收数据，写入缓冲区
+    // 接收数据，写入缓冲区bufferIn_
     int result = recvn(fd_, bufferIn_);
-    // 业务回调,可以利用工作线程池处理，投递任务
     if (result > 0)
     {
-        messageCallback_(shared_from_this(), bufferIn_); // 可以用右值引用优化，bufferIn_.clear();
+        // 将读取到的缓冲区数据bufferIn_回调回动态绑定的上层处理函数messageCallback_
+        messageCallback_(shared_from_this());
     }
     else if (result == 0)
     {
@@ -235,7 +268,7 @@ void TcpConnection::HandleWrite()
     if (result > 0)
     {
         uint32_t events = spChannel_->GetEvents();
-        if (bufferOut_.size() > 0)
+        if (!bufferOut_.empty())
         {
             // 缓冲区满了，数据没发完，就设置EPOLLOUT事件触发
             spChannel_->SetEvents(events | EPOLLOUT);
@@ -296,14 +329,14 @@ void TcpConnection::HandleClose()
     {
         return;
     }
-    if (bufferOut_.size() > 0 || bufferIn_.size() > 0 || asyncProcessing_)
+    if (bufferOut_.size() > 0 || bufferIn_.length() > 0 || asyncProcessing_)
     {
         // 如果还有数据待发送，则先发完,设置半关闭标志位
         halfClose_ = true;
         // 还有数据刚刚才收到，但同时又收到FIN
-        if (bufferIn_.size() > 0)
+        if (bufferIn_.length() > 0)
         {
-            messageCallback_(shared_from_this(), bufferIn_);
+            messageCallback_(shared_from_this());
         }
     }
     else
@@ -318,7 +351,7 @@ void TcpConnection::HandleClose()
  * 设置连接处理函数
  * 
  */
-void TcpConnection::SetMessaeCallback(const MessageCallback &cb)
+void TcpConnection::SetMessaeCallback(const Callback &cb)
 {
     messageCallback_ = cb;
 }
@@ -369,24 +402,80 @@ void TcpConnection::SetAsyncProcessing(const bool asyncProcessing)
 }
 
 /*
+ * 重置bufferOut_的内容
+ * 传递的数据为char*类型，若不指定数据长度，会被第一个'\0'截断
+ * 
+ */
+int TcpConnection::setSendMessage(const std::string &newMsg)
+{
+    return (bufferOut_ = newMsg).length();
+}
+
+/*
+ * 添加新数据到bufferOut_
+ * 传递的数据为char*类型，若不指定数据长度，会被第一个'\0'截断
+ * 
+ */
+int TcpConnection::addSendMessage(const std::string &newMsg)
+{
+    return (bufferOut_ += newMsg).length();
+}
+
+/*
+ * 获取接收缓冲区的指针
+ * 
+ */
+std::string &TcpConnection::getBufferIn()
+{
+    return bufferIn_;
+}
+
+/*
+ * 获取接收缓冲区的指针
+ * 
+ */
+std::string &TcpConnection::getBufferOut()
+{
+    return bufferOut_;
+}
+
+/*
+ * 获取接收到的数据的长度
+ * 
+ */
+int TcpConnection::getReceiveLength()
+{
+    return bufferIn_.size();
+}
+
+/*
+ * 获取接收到的数据的长度
+ * 
+ */
+int TcpConnection::getSendLength()
+{
+    return bufferOut_.length();
+}
+
+/*
  * 读取客户端数据
  * 
  */
-int recvn(int fd, std::string &bufferin)
+int recvn(int fd, std::string &recvMsg)
 {
+    recvMsg.clear();
     int nbyte = 0;
-    int readsum = 0;
     char buffer[BUFSIZE];
     for (;;)
     {
-        // nbyte = recv(fd, buffer, BUFSIZE, 0);
         nbyte = read(fd, buffer, BUFSIZE);
         if (nbyte > 0)
         {
-            bufferin.append(buffer, nbyte); // 效率较低，2次拷贝
-            readsum += nbyte;
+            recvMsg.append(buffer, nbyte);
             if (nbyte < BUFSIZE)
-                return readsum; // 读优化，减小一次读调用，因为一次调用耗时10+us
+            {
+               return recvMsg.length(); // 读优化，减小一次读调用，因为一次调用耗时10+us
+            }
             else
                 continue;
         }
@@ -395,7 +484,7 @@ int recvn(int fd, std::string &bufferin)
             if (errno == EAGAIN) // 系统缓冲区未有数据，非阻塞返回
             {
                 // std::cout << "EAGAIN,系统缓冲区未有数据，非阻塞返回" << std::endl;
-                return readsum;
+                return recvMsg.size();
             }
             else if (errno == EINTR)
             {
@@ -422,48 +511,21 @@ int recvn(int fd, std::string &bufferin)
  * 发送数据到客户端
  * 
  */
-int sendn(int fd, std::string &bufferout)
+int sendn(int fd, std::string &sendMsg)
 {
     ssize_t nbyte = 0;
     int sendsum = 0;
-    // char buffer[BUFSIZE+1];
-    size_t length = 0;
-    // length = bufferout.copy(buffer, BUFSIZE, 0);
-    // buffer[length] = '\0';
-    //  if(bufferout.size() >= BUFSIZE)
-    //  {
-    //  	length =  BUFSIZE;
-    //  }
-    //  else
-    //  {
-    //  	length =  bufferout.size();
-    //  }
-    // 无拷贝优化
-    length = bufferout.size();
-    if (length >= BUFSIZE)
-    {
-        length = BUFSIZE;
-    }
+    size_t length = sendMsg.length() > BUFSIZE ? BUFSIZE : sendMsg.size();
     for (;;)
     {
-        // nbyte = send(fd, buffer, length, 0);
-        // nbyte = send(fd, bufferout.c_str(), length, 0);
-        nbyte = write(fd, bufferout.c_str(), length);
-        if (nbyte > 0)
+        nbyte = send(fd, sendMsg.data(), length, 0);
+        sleep(0.1); // 防止毡包 TODO 设计更好的防护
+        if(nbyte > 0)
         {
             sendsum += nbyte;
-            bufferout.erase(0, nbyte);
-            // length = bufferout.copy(buffer, BUFSIZE, 0);
-            // buffer[length] = '\0';
-            length = bufferout.size();
-            if (length >= BUFSIZE)
-            {
-                length = BUFSIZE;
-            }
-            if (length == 0)
-            {
-                return sendsum;
-            }
+            sendMsg.erase(0, nbyte);
+            length = sendMsg.length() > BUFSIZE ? BUFSIZE : sendMsg.size();
+            if(!length) break;
         }
         else if (nbyte < 0) // 异常
         {
@@ -498,4 +560,5 @@ int sendn(int fd, std::string &bufferout)
             return 0;
         }
     }
+    return sendsum;
 }

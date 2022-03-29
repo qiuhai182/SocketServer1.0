@@ -1,5 +1,7 @@
 
 // http网络会话类
+//  主要供外部HttpServer类内调用
+//  对一个网络连接TcpConnection的请求进行解析、资源分析与处理
 
 // GET /register.do?p={%22username%22:%20%2213917043329%22,%20%22nickname%22:%20%22balloon%22,%20%22password%22:%20%22123%22} HTTP/1.1\r\n
 // GET / HTTP/1.1
@@ -48,27 +50,32 @@
 #include <iostream>
 #include <string>
 #include <sstream>
+#include <fstream>
 #include <map>
+#include "Resource.hpp"
+#include "TypeIdentify.hpp"
+
+#define BUFSIZE 4096
 
 // http请求信息结构
-typedef struct _HttpRequestContext
+typedef struct HttpRequestContext
 {
     std::string method;
     std::string url;
     std::string version;
     std::map<std::string, std::string> header;
     std::string body;
-} HttpRequestContext;
+} _HttpRequestContext;
 
 // http响应信息结构
-typedef struct _HttpResponseContext
+typedef struct HttpResponseContext
 {
     std::string version;
     std::string statecode;
     std::string statemsg;
     std::map<std::string, std::string> header;
     std::string body;
-} HttpResponseContext;
+} _HttpResponseContext;
 
 class HttpSession
 {
@@ -78,14 +85,12 @@ private:
 public:
     HttpSession();
     ~HttpSession();
-    // 解析http请求信息
-    bool ParseHttpRequest(std::string &s, HttpRequestContext &httprequestcontext);  
-    // http请求处理与响应函数
-    void HttpProcess(const HttpRequestContext &httprequestcontext, std::string &responsecontext);
-    // 处理错误http请求，返回错误描述
-    void HttpError(const int err_num, const std::string short_msg, const HttpRequestContext &httprequestcontext, std::string &responsecontext);
-    // TODO
-    bool KeepAlive();
+    bool ParseHttpRequest(std::string &s, HttpRequestContext &httprequestcontext);  // 解析http请求信息
+    bool ParseHttpRequest(char *s, int msgLength, HttpRequestContext &httprequestcontext);  // 解析http请求信息
+    void HttpProcess(const HttpRequestContext &httprequestcontext, std::string &responsecontext);   // 处理接收到的请求信息
+    void HttpError(const int err_num, const std::string &short_msg, const HttpRequestContext &httprequestcontext, std::string &responsecontext);
+    bool KeepAlive();   // 保持长连接
+
 };
 
 HttpSession::HttpSession()
@@ -95,6 +100,21 @@ HttpSession::HttpSession()
 
 HttpSession::~HttpSession()
 {
+}
+
+/*
+ * 获取文件大小	
+ * 
+ */
+int getFileSize(char* file_name)
+{
+	FILE *fp=fopen(file_name,"r");
+	if(!fp)
+		return -1;
+	fseek(fp, 0, SEEK_END);
+	int size = ftell(fp);
+	fclose(fp);
+	return size;
 }
 
 /*
@@ -119,12 +139,12 @@ bool HttpSession::ParseHttpRequest(std::string &msg, HttpRequestContext &httpreq
     }
     else
     {
-        std::cout << "msg" << msg << std::endl;
+        std::cout << "error received message：" << msg << std::endl;
         std::cout << "Error in httpParser: http_request_line isn't complete!" << std::endl;
         parseresult = false;
         msg.clear();
         return parseresult;
-        //可以临时存起来，凑齐了再解析
+        // TODO 可以临时存起来，凑齐了再解析
     }
     size_t pos_crlfcrlf = 0;
     if ((pos_crlfcrlf = msg.find(crlfcrlf, prev)) != std::string::npos)
@@ -153,6 +173,75 @@ bool HttpSession::ParseHttpRequest(std::string &msg, HttpRequestContext &httpreq
 }
 
 /*
+ * 解析http请求信息
+ * 
+ */
+bool HttpSession::ParseHttpRequest(char *msg, int msgLength, HttpRequestContext &httprequestcontext)
+{
+    const char *crlf = "\r\n";
+    const char *crlfcrlf = "\r\n\r\n";
+    bool parseresult = false;
+    char *preFind = msg, *nextFind = NULL, *pos_colon = nullptr;
+    std::string key, value;
+    char *const pos_crlfcrlf = strstr(preFind, crlfcrlf);
+    char buffer[BUFSIZE];
+    // TODO 以下解析可以改成状态机，解决一次收Http报文不完整问题
+    if(nextFind = strstr(preFind, crlf))
+    {
+        memcpy(buffer, preFind, nextFind - preFind);
+        std::string first_line(buffer, nextFind - preFind);
+        preFind = nextFind + 2;
+        std::stringstream sstream(first_line);
+        sstream >> (httprequestcontext.method);
+        sstream >> (httprequestcontext.url);
+        sstream >> (httprequestcontext.version);
+    }
+    else
+    {
+        std::cout << "接收到信息：" << msg << std::endl;
+        std::cout << "Error in httpParser: http_request_line 不完整!" << std::endl;
+        parseresult = false;
+        return parseresult;
+        //可以临时存起来，凑齐了再解析
+    }
+    if(pos_crlfcrlf)
+    {
+        while(pos_crlfcrlf != (nextFind = strstr(preFind, crlf)))
+        {
+            // 仍在查询请求头部分
+            if(nextFind)
+            {
+                pos_colon = strstr(preFind + 2, ":");
+                memcpy(buffer, preFind, pos_colon - preFind);
+                key.clear();
+                key.append(buffer, pos_colon - preFind);
+                memcpy(buffer, pos_colon + 2, nextFind - (pos_colon + 2));
+                value.clear();
+                value.append(buffer, nextFind - (pos_colon + 2));
+                preFind = nextFind + 2;
+                httprequestcontext.header.insert(std::pair<std::string, std::string>(key, value));
+            }
+            else
+                break;
+        }
+    }
+    else
+    {
+        std::cout << "接收到信息：" << msg << std::endl;
+        std::cout << "Error in httpParser: http_request_header 不完整!" << std::endl;
+        parseresult = false;
+        return parseresult;
+    }
+    std::string conLen = httprequestcontext.header["Content-Length"];
+    int contentLength = conLen.empty() ? msgLength - (pos_crlfcrlf + 4 - msg) : atoi(conLen.c_str());
+    memcpy(buffer, pos_crlfcrlf + 4, contentLength);
+    httprequestcontext.body.clear();
+    httprequestcontext.body.append(buffer, 0, contentLength);
+    parseresult = true;
+    return parseresult;
+}
+
+/*
  * http请求处理与响应函数
  * 
  */
@@ -162,6 +251,7 @@ void HttpSession::HttpProcess(const HttpRequestContext &httprequestcontext, std:
     std::string errormsg;
     std::string path;
     std::string querystring;
+    std::string filetype("text/html"); // 默认资源文件类型
     if ("GET" == httprequestcontext.method)
     {
         ;
@@ -172,13 +262,15 @@ void HttpSession::HttpProcess(const HttpRequestContext &httprequestcontext, std:
     }
     else
     {
-        errormsg = "Method Not Implemented";
-        HttpError(501, "Method Not Implemented", httprequestcontext, responsecontext);
+        // 对其他方法不支持
+        errormsg = "不支持方法：" + httprequestcontext.method + " (Method Not Implemented)";
+        HttpError(501, errormsg.data(), httprequestcontext, responsecontext);
         return;
     }
     size_t pos = httprequestcontext.url.find("?");
     if (pos != std::string::npos)
     {
+        // 请求链接包含?，获取'?'以前的path以及'?'以后的querystring
         path = httprequestcontext.url.substr(0, pos);
         querystring = httprequestcontext.url.substr(pos + 1);
     }
@@ -186,14 +278,16 @@ void HttpSession::HttpProcess(const HttpRequestContext &httprequestcontext, std:
     {
         path = httprequestcontext.url;
     }
-    // keepalive判断处理
+    // keepalive判断处理，包含Connection字段
     std::map<std::string, std::string>::const_iterator iter = httprequestcontext.header.find("Connection");
     if (iter != httprequestcontext.header.end())
     {
+        // Connection字段值为Keep-Alive则保持长连接
         keepalive_ = (iter->second == "Keep-Alive");
     }
     else
     {
+        // 不包含Keep-Alive字段，根据协议版本判断是否需要长连接
         if (httprequestcontext.version == "HTTP/1.1")
         {
             keepalive_ = true; // HTTP/1.1默认长连接
@@ -205,11 +299,12 @@ void HttpSession::HttpProcess(const HttpRequestContext &httprequestcontext, std:
     }
     if ("/" == path)
     {
-        path = "/index.html";
+        // 默认访问index.html页面
+        path = wwwRoot + "index.html";
     }
     else if ("/hello" == path)
     {
-        std::string filetype("text/html");
+        // '/hello'处理为以下内容，作为参考
         responsebody = ("hello world");
         responsecontext += httprequestcontext.version + " 200 OK\r\n";
         responsecontext += "Server: Qiu Hai's NetServer/0.1\r\n";
@@ -223,54 +318,85 @@ void HttpSession::HttpProcess(const HttpRequestContext &httprequestcontext, std:
         responsecontext += responsebody;
         return;
     }
-    path.insert(0, ".");
+    else
+    {
+        // 为请求的网页资源加上正确的相对路径前缀
+        path = wwwRoot + path;
+    }
+    size_t point;
+    if ((point = path.rfind('.')) != std::string::npos)
+    {
+        // 判断请求资源文件类型
+        filetype = TypeIdentify::getContentType(path.substr(point));
+        if(filetype.empty())
+        {
+            // 无法识别资源文件类型
+            filetype = "text/html";
+        }
+    }
     FILE *fp = NULL;
     if ((fp = fopen(path.c_str(), "rb")) == NULL)
     {
-        //perror("error fopen");
-        //404 NOT FOUND
+        // 未定位到资源文件
         HttpError(404, "Not Found", httprequestcontext, responsecontext);
         return;
     }
     else
     {
-        char buffer[4096];
-        memset(buffer, 0, sizeof(buffer));
-        while (fread(buffer, sizeof(buffer), 1, fp) == 1) //可以mmap内存映射优化
+        // 读取并发送请求的资源文件
+        std::fstream tmpfile;
+        tmpfile.open(path.c_str(), std::ios::in | std::ios::binary | std::ios::ate); // 二进制输入(读取),定位到文件末尾
+        if (tmpfile.is_open())
         {
-            responsebody.append(buffer);
-            memset(buffer, 0, sizeof(buffer));
-        }
-        if (feof(fp))
-        {
-            responsebody.append(buffer);
-        }
-        else
-        {
-            std::cout << "error fread" << std::endl;
+            size_t length = tmpfile.tellg(); // 获取文件大小
+            tmpfile.seekg(0, std::ios::beg); // 定位到文件开始
+            char data[BUFSIZE];
+            while (length >= BUFSIZE)
+            {
+                tmpfile.read(data, BUFSIZE);
+                responsebody.append(data, BUFSIZE);
+                length -= BUFSIZE;
+            }
+            if (length > 0)
+            {
+                tmpfile.read(data, length);
+                responsebody.append(data, length);
+                length = 0;
+            }
         }
         fclose(fp);
     }
-    std::string filetype("text/html"); //暂时固定为html
     responsecontext += httprequestcontext.version + " 200 OK\r\n";
-    responsecontext += "Server: Chen Shuaihao's NetServer/0.1\r\n";
+    responsecontext += "Server: QiuHai's NetServer/0.1\r\n";
     responsecontext += "Content-Type: " + filetype + "; charset=utf-8\r\n";
     if (iter != httprequestcontext.header.end())
     {
         responsecontext += "Connection: " + iter->second + "\r\n";
     }
-    responsecontext += "Content-Length: " + std::to_string(responsebody.size()) + "\r\n";
-    responsecontext += "\r\n";
-    responsecontext += responsebody;
+    // responsecontext += "Content-Length: " + std::to_string(getFileSize(path.data())) + "\r\n\r\n";
+    responsecontext += "Content-Length: " + std::to_string(responsebody.length()) + "\r\n\r\n";
+    responsecontext.append(responsebody, 0, responsebody.length());
+
 }
 
 /*
  * 处理错误http请求，返回错误描述
  * 
  */
-void HttpSession::HttpError(const int err_num, const std::string short_msg, const HttpRequestContext &httprequestcontext, std::string &responsecontext)
+void HttpSession::HttpError(const int err_num, const std::string &short_msg, const HttpRequestContext &httprequestcontext, std::string &responsecontext)
 {
-    //这里string创建销毁应该会耗时间
+    responsecontext.clear();
+    if (httprequestcontext.version.empty())
+    {
+        responsecontext += "HTTP/1.1 " + std::to_string(err_num) + " " + short_msg + "\r\n";
+    }
+    else
+    {
+        responsecontext += httprequestcontext.version + " " + std::to_string(err_num) + " " + short_msg + "\r\n";
+    }
+    responsecontext += "Server: Qiu Hai's NetServer/0.1\r\n";
+    responsecontext += "Content-Type: text/html\r\n";
+    responsecontext += "Connection: Keep-Alive\r\n";
     std::string responsebody;
     responsebody += "<html><title>出错了</title>";
     responsebody += "<head><meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\"></head>";
@@ -278,22 +404,9 @@ void HttpSession::HttpError(const int err_num, const std::string short_msg, cons
     responsebody += "<body bgcolor=\"ffffff\"><h1>";
     responsebody += std::to_string(err_num) + " " + short_msg;
     responsebody += "</h1><hr><em> Qiu Hai's NetServer</em>\n</body></html>";
-    std::string httpversion;
-    if (httprequestcontext.version.empty())
-    {
-        httpversion = "HTTP/1.1";
-    }
-    else
-    {
-        httpversion = httprequestcontext.version;
-    }
-    responsecontext += httpversion + " " + std::to_string(err_num) + " " + short_msg + "\r\n";
-    responsecontext += "Server: Qiu Hai's NetServer/0.1\r\n";
-    responsecontext += "Content-Type: text/html\r\n";
-    responsecontext += "Connection: Keep-Alive\r\n";
     responsecontext += "Content-Length: " + std::to_string(responsebody.size()) + "\r\n";
     responsecontext += "\r\n";
-    responsecontext += responsebody;
+    responsecontext.append(responsebody, 0, responsebody.length());
 }
 
 /*

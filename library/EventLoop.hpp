@@ -219,7 +219,7 @@ void EventLoop::loop()
         poller_.poll(activeChannelList_);
         for (Channel *pchannel : activeChannelList_)
         {
-            std::cout << std::endl << "one connection, sockfd = " << pchannel->GetFd() << std::endl;
+            std::cout << "输出测试：EventLoop处理新连接, 连接sockfd：" << pchannel->GetFd() << std::endl;
             pchannel->HandleEvent();
         }
         activeChannelList_.clear();
