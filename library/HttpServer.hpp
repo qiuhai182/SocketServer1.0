@@ -22,7 +22,7 @@ class HttpServer
 public:
     typedef std::shared_ptr<TcpConnection> spTcpConnection;
     typedef std::shared_ptr<Timer> spTimer;
-    HttpServer(EventLoop *loop, const int port, const int iothreadnum, const int workerthreadnum);
+    HttpServer(EventLoop *loop, const int port, const int loopThreadNum, const int workThreadNum = 0);
     ~HttpServer();
     void Start();   // tcpServer创建所需的事件池子线程并启动，添加tcp服务Channel实例为监听对象
 
@@ -30,8 +30,10 @@ private:
     std::mutex mutex_;
     std::map<spTcpConnection, std::shared_ptr<HttpSession>> httpSessionnList_;  // 
     std::map<spTcpConnection, spTimer> timerList_;  // 
-    TcpServer tcpserver_;   // 基础网络服务TcpServer
-    ThreadPool threadpool_; // 线程池
+    int workThreadNum_;
+    int loopThreadNum_;
+    TcpServer tcpserver_;       // 基础网络服务TcpServer
+    ThreadPool *threadpool_;    // 线程池
     void HandleNewConnection(const spTcpConnection &sptcpconn); // HttpServer模式处理新连接
     void HandleMessage(const spTcpConnection &sptcpconn);       // HttpServer模式处理收到的请求
     void HandleSendComplete(const spTcpConnection &sptcpconn);  // HttpServer模式数据发送客户端完毕
@@ -40,22 +42,31 @@ private:
 
 };
 
-HttpServer::HttpServer(EventLoop *loop, const int port, const int iothreadnum, const int workerthreadnum)
-    : tcpserver_(loop, port, iothreadnum),
-      threadpool_(workerthreadnum)
+HttpServer::HttpServer(EventLoop *loop, const int port, const int loopThreadNum, const int workThreadNum)
+    :   loopThreadNum_(loopThreadNum),
+        workThreadNum_(workThreadNum),
+        tcpserver_(loop, port, loopThreadNum)
 {
+    if(workThreadNum_)
+    {
+        threadpool_ = new ThreadPool(workThreadNum_);
+    }
     // 基于TcpServer设置HttpServer服务函数，在TcpServer内触发调用HttpServer的成员函数，类似于信号槽机制
     tcpserver_.SetNewConnCallback(std::bind(&HttpServer::HandleNewConnection, this, std::placeholders::_1));
     tcpserver_.SetMessageCallback(std::bind(&HttpServer::HandleMessage, this, std::placeholders::_1));
     tcpserver_.SetSendCompleteCallback(std::bind(&HttpServer::HandleSendComplete, this, std::placeholders::_1));
     tcpserver_.SetCloseCallback(std::bind(&HttpServer::HandleClose, this, std::placeholders::_1));
     tcpserver_.SetErrorCallback(std::bind(&HttpServer::HandleError, this, std::placeholders::_1));
-    threadpool_.Start();
+    threadpool_->Start();
     TimerManager::GetTimerManagerInstance()->Start();
 }
 
 HttpServer::~HttpServer()
 {
+    if(workThreadNum_)
+    {
+        delete threadpool_;
+    }
 }
 
 /*
@@ -93,7 +104,7 @@ void HttpServer::HandleMessage(const spTcpConnection &sptcpconn)
     // 定时关闭连接
     sptimer->Adjust(5000, Timer::TimerType::TIMER_ONCE, std::bind(&TcpConnection::Shutdown, sptcpconn));
     std::string responsecontext;
-    if (threadpool_.GetThreadNum() > 0)
+    if (threadpool_->GetThreadNum() > 0)
     {
         // 已开启线程池，解析http请求，设置异步处理标志，线程池taskQueue_添加任务
         HttpRequestContext httprequestcontext;
@@ -106,7 +117,7 @@ void HttpServer::HandleMessage(const spTcpConnection &sptcpconn)
             return;
         }
         sptcpconn->SetAsyncProcessing(true);
-        threadpool_.AddTask([=]()
+        threadpool_->AddTask([=]()
                             {
                                 std::string responsecontext;
                                 sphttpsession->HttpProcess(httprequestcontext, responsecontext);

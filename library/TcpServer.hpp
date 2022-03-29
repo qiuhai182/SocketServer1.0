@@ -2,6 +2,7 @@
 // tcpServer类：
 //  实现基于socket的网络服务
 //  是其他一切网络服务的基础服务提供类
+//  tcpServer内部生成一个Channel实例用于监听客户端连接
 
 #pragma once
 
@@ -32,13 +33,12 @@ class TcpServer
 {
 public:
     typedef std::shared_ptr<TcpConnection> spTcpConnection;
-    typedef std::function<void(const spTcpConnection &)> MessageCallback;    // 信息处理函数
     typedef std::function<void(const spTcpConnection &)> Callback;
     TcpServer(EventLoop *loop, const int port, const int threadnum = 0);
     ~TcpServer();
     void Start();   // 创建所需的事件池子线程，添加tcp服务Channel实例为监听对象
     void SetNewConnCallback(const Callback &cb);            // 设置新连接处理函数
-    void SetMessageCallback(const MessageCallback &cb);     // 设置消息处理函数
+    void SetMessageCallback(const Callback &cb);     // 设置消息处理函数
     void SetSendCompleteCallback(const Callback &cb);       // 设置数据发送完毕处理函数
     void SetCloseCallback(const Callback &cb);              // 设置连接关闭处理函数
     void SetErrorCallback(const Callback &cb);              // 设置出错处理函数
@@ -52,7 +52,7 @@ private:
     EventLoopThreadPool eventLoopThreadPool;    // 多线程事件池
     std::map<int, std::shared_ptr<TcpConnection>> tcpConnList_; // 套接字描述符->连接抽象类实例
     Callback newConnectionCallback_;    // 新连接处理回调函数
-    MessageCallback messageCallback_;   // 消息处理回调函数
+    Callback messageCallback_;   // 消息处理回调函数
     Callback sendCompleteCallback_;     // 数据发送完毕处理回调函数
     Callback closeCallback_;            // 连接关闭处理回调函数
     Callback errorCallback_;            // 出错处理回调函数
@@ -107,7 +107,7 @@ void TcpServer::SetNewConnCallback(const Callback &cb)
  * 设置消息处理函数
  * 
  */
-void TcpServer::SetMessageCallback(const MessageCallback &cb)
+void TcpServer::SetMessageCallback(const Callback &cb)
 {
     messageCallback_ = cb;
 }
@@ -155,12 +155,12 @@ void TcpServer::OnNewConnection()
                   << " 连接socket：" << clientfd << std::endl;
         if (++connCount_ >= MAXCONNECTION)
         {
-            // 连接超量 TODO connCount_需要-1，检查是否做了
+            // TODO 连接超量 connCount_需要-1 线程安全？
             close(clientfd);
             continue;
         }
         Setnonblocking(clientfd);
-        // 从多线程事件池获取一个事件池索引，该事件池可能是主事件池
+        // 从多线程事件池获取一个事件池索引，该事件池可能是主事件池线程
         // 也可能是事件池工作线程
         // 无论是哪一种，在运行期间都会循环调用loop的poll监听直至服务关闭
         EventLoop *loop = eventLoopThreadPool.GetNextLoop();

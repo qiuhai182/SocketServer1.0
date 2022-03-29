@@ -1,6 +1,7 @@
 
 // TcpConnection类：
-//  客户端连接的抽象表示
+//  客户端连接的抽象表示，每一个客户端连接对应一个TcpConnection
+//  每一个TcpConnection内部生成一个Channel实例用于tcp数据交互
 
 #pragma once
 
@@ -474,6 +475,7 @@ int recvn(int fd, std::string &recvMsg)
             recvMsg.append(buffer, nbyte);
             if (nbyte < BUFSIZE)
             {
+                std::cout << "接收到请求内容：" << std::endl << recvMsg << std::endl;
                return recvMsg.length(); // 读优化，减小一次读调用，因为一次调用耗时10+us
             }
             else

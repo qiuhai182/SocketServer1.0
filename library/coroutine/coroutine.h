@@ -1,11 +1,4 @@
-// Copyright 2020, Chen Shuaihao.
-//
-// Author: Chen Shuaihao
-//
-// -----------------------------------------------------------------------------
-// File: coroutine.h
-// -----------------------------------------------------------------------------
-//
+
 // ref: ucontext-人人都可以实现的简单协程库
 // link: https://blog.csdn.net/qq910894904/article/details/41911175
 //
@@ -51,13 +44,13 @@ int swapcontext(ucontext_t *oucp, ucontext_t *ucp);
 #include <vector>
 #include <functional>
 
-//协程栈空间大小 8KB
-#define DEFAULT_STACK_SIZE 1024*8
+// 协程栈空间大小 8KB
+#define DEFAULT_STACK_SIZE 1024 * 8
 
-//协程任务类
+// 协程任务类
 typedef std::function<void()> Task;
 
-//协程运行状态，FREE：执行完毕，RUNABLE：就绪，RUNNING：运行，SUSPEND：挂起
+// 协程运行状态，FREE：执行完毕，RUNABLE：就绪，RUNNING：运行，SUSPEND：挂起
 enum ThreadState {FREE, RUNNABLE, RUNNING, SUSPEND};
 
 struct schedule_t;

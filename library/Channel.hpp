@@ -32,8 +32,8 @@ public:
     int GetFd() const;      // 获取连接套接字fd
     void SetEvents(uint32_t events);    // 设置连接监听事件epoll_event
     uint32_t GetEvents() const;         // 获取连接事件epoll_event
-    void SetReadHandle(const Callback &cb); //设置数据读取函数
-    void SetWriteHandle(const Callback &cb);// 设置写事件函数
+    void SetReadHandle(const Callback &cb); // 设置读事件（EPOLLIN）处理函数
+    void SetWriteHandle(const Callback &cb);// 设置写事件（EPOLLOUT）处理函数
     void SetErrorHandle(const Callback &cb);// 设置出错处理函数
     void SetCloseHandle(const Callback &cb);// 设置连接关闭函数
     void HandleEvent();     // 执行连接事件
@@ -94,7 +94,7 @@ uint32_t Channel::GetEvents() const
 }
 
 /*
- * 设置数据读取函数
+ * 设置读事件（EPOLLIN）处理函数
  * 
  */
 void Channel::SetReadHandle(const Callback &cb)
@@ -103,7 +103,7 @@ void Channel::SetReadHandle(const Callback &cb)
 }
 
 /*
- * 设置写事件函数
+ * 设置写事件（EPOLLOUT）处理函数
  * 
  */
 void Channel::SetWriteHandle(const Callback &cb)
