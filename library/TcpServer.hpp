@@ -32,7 +32,7 @@ class TcpServer
 {
 public:
     typedef std::shared_ptr<TcpConnection> spTcpConnection;
-    typedef std::function<void(const spTcpConnection &, char *)> MessageCallback;    // 信息处理函数
+    typedef std::function<void(const spTcpConnection &)> MessageCallback;    // 信息处理函数
     typedef std::function<void(const spTcpConnection &)> Callback;
     TcpServer(EventLoop *loop, const int port, const int threadnum = 0);
     ~TcpServer();
@@ -140,7 +140,7 @@ void TcpServer::SetErrorCallback(const Callback &cb)
 }
 
 /*
- * 处理新连接，调用绑定的newConnectionCallback_函数
+ * 处理新连接，再调用绑定的newConnectionCallback_函数
  * 
  */
 void TcpServer::OnNewConnection()
@@ -149,8 +149,10 @@ void TcpServer::OnNewConnection()
     int clientfd;
     while ((clientfd = tcpServerSocket_.Accept(clientaddr)) > 0)
     {
-        std::cout << "TceServer->TcpConnection->Channel handle new connection from IP:" << inet_ntoa(clientaddr.sin_addr)
-                  << ":" << ntohs(clientaddr.sin_port) << std::endl;
+        // 新连接进入处理
+        std::cout << "输出测试： TceServer->TcpServerChannel handle new connection from IP:" << inet_ntoa(clientaddr.sin_addr)
+                  << ":" << ntohs(clientaddr.sin_port)
+                  << " 连接socket：" << clientfd << std::endl;
         if (++connCount_ >= MAXCONNECTION)
         {
             // 连接超量 TODO connCount_需要-1，检查是否做了

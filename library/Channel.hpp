@@ -135,21 +135,25 @@ void Channel::SetCloseHandle(const Callback &cb)
  */
 void Channel::HandleEvent()
 {
-    if (events_ & EPOLLRDHUP) // 客户端异常关闭事件
+    if (events_ & EPOLLRDHUP) 
     {
+        // 客户端异常关闭事件
         std::cout << "Event EPOLLRDHUP" << std::endl;
         closeHandler_();
     }
-    else if (events_ & (EPOLLIN | EPOLLPRI)) // 读事件，客户端有数据或者正常关闭
+    else if (events_ & (EPOLLIN | EPOLLPRI)) 
     {
+        // 读事件，客户端有数据或者正常关闭
         readHandler_();
     }
-    else if (events_ & EPOLLOUT) // 写事件
+    else if (events_ & EPOLLOUT) 
     {
+        // 写事件，发送数据到客户端
         writeHandler();
     }
-    else // 连接错误
+    else
     {
+        // 连接错误
         errorHandler_();
     }
 }

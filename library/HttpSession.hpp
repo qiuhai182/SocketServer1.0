@@ -1,5 +1,7 @@
 
 // http网络会话类
+//  主要供外部HttpServer类内调用
+//  对一个网络连接TcpConnection的请求进行解析、资源分析与处理
 
 // GET /register.do?p={%22username%22:%20%2213917043329%22,%20%22nickname%22:%20%22balloon%22,%20%22password%22:%20%22123%22} HTTP/1.1\r\n
 // GET / HTTP/1.1
@@ -56,28 +58,24 @@
 #define BUFSIZE 4096
 
 // http请求信息结构
-typedef struct _HttpRequestContext
+typedef struct HttpRequestContext
 {
     std::string method;
     std::string url;
     std::string version;
     std::map<std::string, std::string> header;
     std::string body;
-} HttpRequestContext;
+} _HttpRequestContext;
 
 // http响应信息结构
-typedef struct _HttpResponseContext
+typedef struct HttpResponseContext
 {
     std::string version;
     std::string statecode;
     std::string statemsg;
     std::map<std::string, std::string> header;
-    char *body;
-    ~_HttpResponseContext()
-    {
-        delete body;
-    }
-} HttpResponseContext;
+    std::string body;
+} _HttpResponseContext;
 
 class HttpSession
 {
@@ -87,14 +85,11 @@ private:
 public:
     HttpSession();
     ~HttpSession();
-    // 解析http请求信息
-    bool ParseHttpRequest(char *s, int msgLength, HttpRequestContext &httprequestcontext);  
-    // http请求处理与响应函数
-    void HttpProcess(const HttpRequestContext &httprequestcontext, std::string &responsecontext);
-    // 处理错误http请求，返回错误描述
-    void HttpError(const int err_num, const std::string short_msg, const HttpRequestContext &httprequestcontext, std::string &responsecontext);
-    // TODO
-    bool KeepAlive();
+    bool ParseHttpRequest(std::string &s, HttpRequestContext &httprequestcontext);  // 解析http请求信息
+    bool ParseHttpRequest(char *s, int msgLength, HttpRequestContext &httprequestcontext);  // 解析http请求信息
+    void HttpProcess(const HttpRequestContext &httprequestcontext, std::string &responsecontext);   // 处理接收到的请求信息
+    void HttpError(const int err_num, const std::string &short_msg, const HttpRequestContext &httprequestcontext, std::string &responsecontext);
+    bool KeepAlive();   // 保持长连接
 
 };
 
@@ -107,9 +102,12 @@ HttpSession::~HttpSession()
 {
 }
 
+/*
+ * 获取文件大小	
+ * 
+ */
 int getFileSize(char* file_name)
 {
-  // 获取文件大小	
 	FILE *fp=fopen(file_name,"r");
 	if(!fp)
 		return -1;
@@ -123,23 +121,76 @@ int getFileSize(char* file_name)
  * 解析http请求信息
  * 
  */
+bool HttpSession::ParseHttpRequest(std::string &msg, HttpRequestContext &httprequestcontext)
+{
+    std::string crlf("\r\n"), crlfcrlf("\r\n\r\n");
+    size_t prev = 0, next = 0, pos_colon;
+    std::string key, value;
+    bool parseresult = false;
+    //TODO以下解析可以改成状态机，解决一次收Http报文不完整问题
+    if ((next = msg.find(crlf, prev)) != std::string::npos)
+    {
+        std::string first_line(msg.substr(prev, next - prev));
+        prev = next;
+        std::stringstream sstream(first_line);
+        sstream >> (httprequestcontext.method);
+        sstream >> (httprequestcontext.url);
+        sstream >> (httprequestcontext.version);
+    }
+    else
+    {
+        std::cout << "error received message：" << msg << std::endl;
+        std::cout << "Error in httpParser: http_request_line isn't complete!" << std::endl;
+        parseresult = false;
+        msg.clear();
+        return parseresult;
+        // TODO 可以临时存起来，凑齐了再解析
+    }
+    size_t pos_crlfcrlf = 0;
+    if ((pos_crlfcrlf = msg.find(crlfcrlf, prev)) != std::string::npos)
+    {
+        while (prev != pos_crlfcrlf)
+        {
+            next = msg.find(crlf, prev + 2);
+            pos_colon = msg.find(":", prev + 2);
+            key = msg.substr(prev + 2, pos_colon - prev - 2);
+            value = msg.substr(pos_colon + 2, next - pos_colon - 2);
+            prev = next;
+            httprequestcontext.header.insert(std::pair<std::string, std::string>(key, value));
+        }
+    }
+    else
+    {
+        std::cout << "Error in httpParser: http_request_header isn't complete!" << std::endl;
+        parseresult = false;
+        msg.clear();
+        return parseresult;
+    }
+    httprequestcontext.body = msg.substr(pos_crlfcrlf + 4);
+    parseresult = true;
+    msg.clear();
+    return parseresult;
+}
+
+/*
+ * 解析http请求信息
+ * 
+ */
 bool HttpSession::ParseHttpRequest(char *msg, int msgLength, HttpRequestContext &httprequestcontext)
 {
-    std::cout << "解析网络请求，输出测试：" << msgLength << std::endl;
     const char *crlf = "\r\n";
     const char *crlfcrlf = "\r\n\r\n";
     bool parseresult = false;
     char *preFind = msg, *nextFind = NULL, *pos_colon = nullptr;
     std::string key, value;
     char *const pos_crlfcrlf = strstr(preFind, crlfcrlf);
+    char buffer[BUFSIZE];
     // TODO 以下解析可以改成状态机，解决一次收Http报文不完整问题
     if(nextFind = strstr(preFind, crlf))
     {
-        char *buffer;
         memcpy(buffer, preFind, nextFind - preFind);
-        std::string first_line(buffer);
-        std::cout << "状态行：" << first_line << std::endl;
-        preFind = nextFind;
+        std::string first_line(buffer, nextFind - preFind);
+        preFind = nextFind + 2;
         std::stringstream sstream(first_line);
         sstream >> (httprequestcontext.method);
         sstream >> (httprequestcontext.url);
@@ -158,15 +209,20 @@ bool HttpSession::ParseHttpRequest(char *msg, int msgLength, HttpRequestContext 
         while(pos_crlfcrlf != (nextFind = strstr(preFind, crlf)))
         {
             // 仍在查询请求头部分
-            pos_colon = strstr(preFind + 2, ":");
-            char *buffer_key, *buffer_value;
-            memcpy(buffer_key, preFind + 2, pos_colon - (preFind + 2));
-            key = buffer_key;
-            memcpy(buffer_value, pos_colon + 2, nextFind - (pos_colon + 2));
-            value = buffer_value;
-            std::cout << "key:value"<< key << ":" << value << std::endl;
-            preFind = nextFind;
-            httprequestcontext.header.insert(std::pair<std::string, std::string>(key, value));
+            if(nextFind)
+            {
+                pos_colon = strstr(preFind + 2, ":");
+                memcpy(buffer, preFind, pos_colon - preFind);
+                key.clear();
+                key.append(buffer, pos_colon - preFind);
+                memcpy(buffer, pos_colon + 2, nextFind - (pos_colon + 2));
+                value.clear();
+                value.append(buffer, nextFind - (pos_colon + 2));
+                preFind = nextFind + 2;
+                httprequestcontext.header.insert(std::pair<std::string, std::string>(key, value));
+            }
+            else
+                break;
         }
     }
     else
@@ -176,16 +232,12 @@ bool HttpSession::ParseHttpRequest(char *msg, int msgLength, HttpRequestContext 
         parseresult = false;
         return parseresult;
     }
-    char *buffer;
-    std::cout << "输出测试：读取Content-Length" << std::endl;
     std::string conLen = httprequestcontext.header["Content-Length"];
-    std::cout << "输出测试：读取Content-Length完毕" << std::endl;
     int contentLength = conLen.empty() ? msgLength - (pos_crlfcrlf + 4 - msg) : atoi(conLen.c_str());
     memcpy(buffer, pos_crlfcrlf + 4, contentLength);
     httprequestcontext.body.clear();
     httprequestcontext.body.append(buffer, 0, contentLength);
     parseresult = true;
-    std::cout << "输出测试：" << conLen << " " << contentLength << std::endl;
     return parseresult;
 }
 
@@ -292,54 +344,26 @@ void HttpSession::HttpProcess(const HttpRequestContext &httprequestcontext, std:
     else
     {
         // 读取并发送请求的资源文件
-        // const int IOBuf_MAX_SIZE = 253952;
-        const int IOBuf_MAX_SIZE = 4096;
-
-        // char buffer[IOBuf_MAX_SIZE];
-        // memset(buffer, 0, sizeof(buffer));
-        // while (fread(buffer, sizeof(buffer), 1, fp) == 1) // TODO 可以mmap内存映射优化
-        // {
-        //     responsebody.append(buffer);
-        //     memset(buffer, 0, sizeof(buffer));
-        //     // std::cout << "body.len=" << responsebody.length() << std::endl;
-        // }
-        // if (feof(fp))
-        // {
-        //     responsebody.append(buffer);
-        //     // std::cout << "body.len=" << responsebody.length() << std::endl;
-        //     // for(int i = 0; i < responsebody.length(); ++i)
-        //     // {
-        //     //     std::cout << i << " " << responsebody.data()[i] << " ";
-        //     // }
-        //     // std::cout << std::endl;
-        // }
-        // else
-        // {
-        //     std::cout << "error fread" << std::endl;
-        // }
-    
         std::fstream tmpfile;
         tmpfile.open(path.c_str(), std::ios::in | std::ios::binary | std::ios::ate); // 二进制输入(读取),定位到文件末尾
         if (tmpfile.is_open())
         {
             size_t length = tmpfile.tellg(); // 获取文件大小
             tmpfile.seekg(0, std::ios::beg); // 定位到文件开始
-            char data[IOBuf_MAX_SIZE];
-            while (length >= IOBuf_MAX_SIZE)
+            char data[BUFSIZE];
+            while (length >= BUFSIZE)
             {
-                tmpfile.read(data, IOBuf_MAX_SIZE);
-                responsebody.append(data);
-                length -= IOBuf_MAX_SIZE;
+                tmpfile.read(data, BUFSIZE);
+                responsebody.append(data, BUFSIZE);
+                length -= BUFSIZE;
             }
             if (length > 0)
             {
                 tmpfile.read(data, length);
-                responsebody.append(data);
+                responsebody.append(data, length);
                 length = 0;
             }
-            std::cout << std::endl << "!!!!!len: " << sizeof(responsebody.data())/sizeof(char) << std::endl << responsebody.length() << std::endl << responsebody.size() << std::endl;
         }
-
         fclose(fp);
     }
     responsecontext += httprequestcontext.version + " 200 OK\r\n";
@@ -351,7 +375,7 @@ void HttpSession::HttpProcess(const HttpRequestContext &httprequestcontext, std:
     }
     // responsecontext += "Content-Length: " + std::to_string(getFileSize(path.data())) + "\r\n\r\n";
     responsecontext += "Content-Length: " + std::to_string(responsebody.length()) + "\r\n\r\n";
-    responsecontext += responsebody;
+    responsecontext.append(responsebody, 0, responsebody.length());
 
 }
 
@@ -359,9 +383,20 @@ void HttpSession::HttpProcess(const HttpRequestContext &httprequestcontext, std:
  * 处理错误http请求，返回错误描述
  * 
  */
-void HttpSession::HttpError(const int err_num, const std::string short_msg, const HttpRequestContext &httprequestcontext, std::string &responsecontext)
+void HttpSession::HttpError(const int err_num, const std::string &short_msg, const HttpRequestContext &httprequestcontext, std::string &responsecontext)
 {
-    //这里string创建销毁应该会耗时间
+    responsecontext.clear();
+    if (httprequestcontext.version.empty())
+    {
+        responsecontext += "HTTP/1.1 " + std::to_string(err_num) + " " + short_msg + "\r\n";
+    }
+    else
+    {
+        responsecontext += httprequestcontext.version + " " + std::to_string(err_num) + " " + short_msg + "\r\n";
+    }
+    responsecontext += "Server: Qiu Hai's NetServer/0.1\r\n";
+    responsecontext += "Content-Type: text/html\r\n";
+    responsecontext += "Connection: Keep-Alive\r\n";
     std::string responsebody;
     responsebody += "<html><title>出错了</title>";
     responsebody += "<head><meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\"></head>";
@@ -369,22 +404,9 @@ void HttpSession::HttpError(const int err_num, const std::string short_msg, cons
     responsebody += "<body bgcolor=\"ffffff\"><h1>";
     responsebody += std::to_string(err_num) + " " + short_msg;
     responsebody += "</h1><hr><em> Qiu Hai's NetServer</em>\n</body></html>";
-    std::string httpversion;
-    if (httprequestcontext.version.empty())
-    {
-        httpversion = "HTTP/1.1";
-    }
-    else
-    {
-        httpversion = httprequestcontext.version;
-    }
-    responsecontext += httpversion + " " + std::to_string(err_num) + " " + short_msg + "\r\n";
-    responsecontext += "Server: Qiu Hai's NetServer/0.1\r\n";
-    responsecontext += "Content-Type: text/html\r\n";
-    responsecontext += "Connection: Keep-Alive\r\n";
     responsecontext += "Content-Length: " + std::to_string(responsebody.size()) + "\r\n";
     responsecontext += "\r\n";
-    responsecontext += responsebody;
+    responsecontext.append(responsebody, 0, responsebody.length());
 }
 
 /*

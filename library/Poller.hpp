@@ -125,11 +125,12 @@ void Poller::poll(ChannelList &activeChannelList)
     {
         perror("epoll wait error");
     }
+    if(nfds)
+        std::cout << "输出测试：Poller监听到" << nfds << "个连接事件待接受" << std::endl;
     // 遍历获取每个网络请求事件
     for (int i = 0; i < nfds; ++i)
     {
         int events = eventList_[i].events;
-        // 类型转换为Channel指针类型
         Channel *pchannel = (Channel *)eventList_[i].data.ptr;
         int fd = pchannel->GetFd();
         std::map<int, Channel *>::const_iterator iter;
@@ -145,10 +146,10 @@ void Poller::poll(ChannelList &activeChannelList)
         }
         else
         {
-            std::cout << "未找到该连接的Channel实例(not find channel)!" << std::endl;
+            std::cout << "Poller未找到该连接的Channel实例(not find channel)!" << std::endl;
         }
     }
-    // epoll事件列表满，扩大eventList_预分配容量
+    // epoll事件列表满，翻倍扩大eventList_预分配容量
     if (nfds == (int)eventList_.capacity())
     {
         std::cout << "resize:" << nfds << std::endl;
