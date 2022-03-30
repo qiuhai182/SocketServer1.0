@@ -207,7 +207,6 @@ void TcpConnection::SendBufferOut()
         // 跨线程调用,加入IO线程的任务队列，唤醒
         spTcpConnection sptcpconn = shared_from_this();
         loop_->AddTask(std::bind(&TcpConnection::SendInLoop, sptcpconn));
-        bufferOut_ = sptcpconn->bufferOut_;
     }
 }
 
@@ -298,14 +297,6 @@ void TcpConnection::HandleRead()
     // 在此向TcpServer请求函数绑定
     spTcpConnection sptcpconn = shared_from_this();
     BindDynamicHandler_(sptcpconn);
-    messageCallback_ = std::move(sptcpconn->GetMessageCallback());
-    sendcompleteCallback_ = std::move(sptcpconn->GetSendCompleteCallback());
-    closeCallback_ = std::move(sptcpconn->GetCloseCallback());
-    errorCallback_ = std::move(sptcpconn->GetErrorCallback());
-    httpRequestContext_.serviceName = std::move(sptcpconn->GetReq().serviceName);
-    httpRequestContext_.handlerName = std::move(sptcpconn->GetReq().handlerName);
-    httpRequestContext_.resourceUrl = std::move(sptcpconn->GetReq().resourceUrl);
-    std::cout << "测试shared。。。函数复制情况 深复制？" << (&httpRequestContext_ == &(sptcpconn->GetReq())) << std::endl;
     if (result > 0)
     {
         reqHealthy_ = ParseHttpRequest();
@@ -314,8 +305,6 @@ void TcpConnection::HandleRead()
         sptcpconn = shared_from_this();
         timer_->Start();
         messageCallback_(sptcpconn);
-        timer_ = sptcpconn->GetTimer();
-        Keepalive_ = sptcpconn->WillKeepAlive();
     }
     else if (result == 0)
     {
@@ -671,7 +660,6 @@ bool TcpConnection::ParseHttpRequest()
         sstream >> (httpRequestContext_.method);
         sstream >> (httpRequestContext_.url);
         sstream >> (httpRequestContext_.version);
-        std::cout << "解析出url：" << httpRequestContext_.url << std::endl;
     }
     else
     {
@@ -795,7 +783,7 @@ int TcpConnection::recvn(int fd, std::string &recvMsg)
             recvMsg.append(buffer, nbyte);
             if (nbyte < BUFSIZE)
             {
-                std::cout << "接收到请求内容：" << std::endl << recvMsg << std::endl;
+                std::cout << std::endl << "接收到请求内容：" << std::endl << recvMsg << std::endl;
                return recvMsg.length(); // 读优化，减小一次读调用，因为一次调用耗时10+us
             }
             else

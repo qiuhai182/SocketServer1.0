@@ -279,7 +279,7 @@ void HttpServer::HttpProcess(spTcpConnection &sptcpconn)
     if ((fp = fopen(path.c_str(), "rb")) == NULL)
     {
         // 未定位到资源文件
-        HttpError(sptcpconn, 404, "Not Found");
+        HttpError(sptcpconn, 404, "Not Found Resource or Service : \"" + httprequestcontext.url + "\"");
         return;
     }
     else

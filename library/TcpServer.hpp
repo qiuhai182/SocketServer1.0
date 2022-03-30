@@ -43,7 +43,7 @@ public:
     void Start();   // 创建所需的事件池子线程，添加tcp服务Channel实例为监听对象
     // 高层服务向tcpServer注册传递给底层connection->channel的处理函数
     void RegisterHandler(std::string serviceName, const std::string handlerType, const Callback &handlerFunc);
-    void BindDynamicHandler(spTcpConnection sptcpconnection);   // 动态绑定sptcpconnection的事件处理函数
+    void BindDynamicHandler(spTcpConnection &sptcpconnection);   // 动态绑定sptcpconnection的事件处理函数
 
 private:
     std::mutex mutex_;
@@ -56,7 +56,7 @@ private:
     std::map<std::string, std::map<std::string, Callback>> serviceHandlers_;    // 不同服务根据服务名及操作名注册的操作函数
     void OnNewConnection();         // 处理新连接
     void OnConnectionError();       // 处理连接错误，关闭套接字
-    void RemoveConnection(spTcpConnection sptcpconnection);    // 连接清理，这里应该由EventLoop来执行，投递回主线程删除 OR 多线程加锁删除
+    void RemoveConnection(spTcpConnection &sptcpconnection);    // 连接清理，这里应该由EventLoop来执行，投递回主线程删除 OR 多线程加锁删除
 
 };
 
@@ -117,7 +117,7 @@ void TcpServer::RegisterHandler(std::string serviceName, const std::string handl
  * 动态绑定sptcpconnection的事件处理函数
  * 
  */
-void BindDynamicHandler(spTcpConnection sptcpconnection)
+void TcpServer::BindDynamicHandler(spTcpConnection &sptcpconnection)
 {
     HttpRequestContext &httpRequestContext = sptcpconnection->GetReq();
     std::string url = httpRequestContext.url;
@@ -141,18 +141,17 @@ void BindDynamicHandler(spTcpConnection sptcpconnection)
                 nextFind = url.length();
             }
             handlerName = url.substr(1, nextFind);
-            resourceUrl = url.substr(nextFind, url.size())
+            resourceUrl = url.substr(nextFind, url.size());
         }
     }
     else
     {
         serviceName = "HttpService";
     }
-    // 基于TcpConnection设置TcpServer服务函数，在TcpConnection内触发调用TcpServer的成员函数，类似于信号槽机制
-    sptcpconnection->SetMessaeCallback(serviceHandlers_[ParseServiceName()][]);
-    sptcpconnection->SetSendCompleteCallback();
-    sptcpconnection->SetCloseCallback();
-    sptcpconnection->SetErrorCallback();
+    sptcpconnection->SetMessaeCallback(serviceHandlers_[serviceName][TcpServer::ReadMessageHandler]);
+    sptcpconnection->SetSendCompleteCallback(serviceHandlers_[serviceName][TcpServer::SendOverHandler]);
+    sptcpconnection->SetCloseCallback(serviceHandlers_[serviceName][TcpServer::CloseConnHandler]);
+    sptcpconnection->SetErrorCallback(serviceHandlers_[serviceName][TcpServer::ErrorConnHandler]);
 }
 
 /*
@@ -181,7 +180,8 @@ void TcpServer::OnNewConnection()
         // 无论是哪一种，在运行期间都会循环调用loop的poll监听直至服务关闭
         EventLoop *loop = eventLoopThreadPool.GetNextLoop();
         // 创建连接抽象类实例TcpConnection，创建时clientfd已有请求数据待读取
-        std::shared_ptr<TcpConnection> sptcpconnection = std::make_shared<TcpConnection>(loop, clientfd, clientaddr);
+        spTcpConnection sptcpconnection = std::make_shared<TcpConnection>(loop, clientfd, clientaddr);
+        sptcpconnection->SetDynamicHandler(std::bind(&TcpServer::BindDynamicHandler, this, std::placeholders::_1));
         sptcpconnection->SetConnectionCleanUp(std::bind(&TcpServer::RemoveConnection, this, std::placeholders::_1));
         {
             // 无名作用域
@@ -206,7 +206,7 @@ void TcpServer::OnConnectionError()
  * 连接清理，这里应该由EventLoop来执行，投递回主线程删除 OR 多线程加锁删除
  * 
  */
-void TcpServer::RemoveConnection(std::shared_ptr<TcpConnection> sptcpconnection)
+void TcpServer::RemoveConnection(spTcpConnection &sptcpconnection)
 {
     std::lock_guard<std::mutex> lock(mutex_);
     --connCount_;
