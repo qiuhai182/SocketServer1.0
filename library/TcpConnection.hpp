@@ -6,34 +6,62 @@
 #pragma once
 
 #include <iostream>
-#include <functional>
+#include <map>
 #include <string>
 #include <thread>
 #include <memory>
 #include <cerrno>
+#include <fstream>
+#include <sstream>
+#include <functional>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include "Timer.hpp"
 #include "Channel.hpp"
+#include "Resource.hpp"
 #include "EventLoop.hpp"
+#include "TypeIdentify.hpp"
 
 #define BUFSIZE 4096
 
-int recvn(int fd, std::string &recvMsg);
-int sendn(int fd, std::string &sendMsg);
+// http请求信息结构
+typedef struct _HttpRequestContext
+{
+    std::string method;
+    std::string url;
+    std::string version;
+    std::map<std::string, std::string> header;
+    std::string body;
+} HttpRequestContext;
+
+// http响应信息结构
+typedef struct _HttpResponseContext
+{
+    std::string version;
+    std::string statecode;
+    std::string statemsg;
+    std::map<std::string, std::string> header;
+    std::string body;
+} HttpResponseContext;
 
 class TcpConnection : public std::enable_shared_from_this<TcpConnection>
 { // 允许安全使用shared_ptr
 public:
     typedef std::shared_ptr<TcpConnection> spTcpConnection; // 指向TcpConnection的智能指针
-    typedef std::function<void(const spTcpConnection &)> Callback; // 回调函数
+    typedef std::function<void(spTcpConnection &)> Callback; // 回调函数
     TcpConnection(EventLoop *loop, int fd, const struct sockaddr_in &clientaddr);
     ~TcpConnection();
     int fd() const { return fd_; }  // 获取套接字描述符
     EventLoop *GetLoop() const { return loop_; }// 获取事件池指针
+    int recvn(int fd, std::string &recvMsg);    // 从客户端fd接收数据
+    int sendn(int fd, std::string &sendMsg);    // 发送数据到客户端fd
     void Send(const std::string &s);            // 发送信息函数，指定EventLoop执行
     void Send(const char *s, int length = 0);   // 发送信息函数，指定EventLoop执行
+    void SendBufferOut();                       // 发送信息函数，指定EventLoop执行
+    bool ParseHttpRequest();    // 解析http请求信息
+    bool GetReqHealthy();       // 获取连接请求解析结果状态
     void SendInLoop();          // 发送信息函数，由EventLoop执行
     void AddChannelToLoop();    // EventLoop添加监听Channel
     void Shutdown();            // 关闭当前连接，指定EventLoop执行
@@ -42,13 +70,19 @@ public:
     void HandleWrite();         // 向客户端发送数据
     void HandleError();         // 处理连接错误
     void HandleClose();         // 处理客户端连接关闭
-    std::string &getBufferIn(); // 获取接收缓冲区的指针
-    std::string &getBufferOut();// 获取发送缓冲区的指针
-    int getReceiveLength();     // 获取接收到的数据的长度
-    int getSendLength();        // 获取待发送数据的长度
-    int setSendMessage(const std::string &newMsg);      // 重置bufferOut_的内容
-    int addSendMessage(const std::string &newMsg);      // 添加新数据到bufferOut_
-    void SetMessaeCallback(const Callback &cb);  // 设置连接处理函数
+    std::string &GetBufferIn(); // 获取接收缓冲区的指针
+    std::string &GetBufferOut();// 获取发送缓冲区的指针
+    int GetReceiveLength();     // 获取接收到的数据的长度
+    int GetSendLength();        // 获取待发送数据的长度
+    Timer *GetTimer();          // 获取定时器指针
+    void StartTimer();          // 启动定时器
+    bool WillKeepAlive();       // 获取长连接标志
+    void SetKeepAlive(bool keepalive);                  // 设置长连接标志
+    HttpRequestContext &GetReq();                       // 获取请求解析结构体的引用
+    HttpResponseContext &GetRes();                      // 获取响应解析结构体的引用
+    int SetSendMessage(const std::string &newMsg);      // 重置bufferOut_的内容
+    int AddSendMessage(const std::string &newMsg);      // 添加新数据到bufferOut_
+    void SetMessaeCallback(const Callback &cb);         // 设置连接处理函数
     void SetSendCompleteCallback(const Callback &cb);   // 设置数据发送完毕处理函数
     void SetCloseCallback(const Callback &cb);          // 设置关闭处理函数
     void SetErrorCallback(const Callback &cb);          // 设置出错处理函数
@@ -63,8 +97,13 @@ private:
     bool disConnected_;             // 连接断开标志位
     bool halfClose_;                // 半关闭标志位
     bool asyncProcessing_;          // 异步调用标志位，当工作任务交给线程池时，置为true，任务完成回调时置为false
+    bool keepalive_;                // 长连接标志，一般用于HttpServer服务
+    bool reqHealthy_;               // 请求解析结果，代表解析是否正常
+    Timer *timer_;                  // 定时器
     std::string bufferIn_;          // 接收数据缓冲区
     std::string bufferOut_;         // 发送数据缓冲区
+    HttpRequestContext httpRequestContext_;     // 
+    HttpResponseContext httpResponseContext_;   // 
     Callback messageCallback_;      // 
     Callback sendcompleteCallback_; // 
     Callback closeCallback_;        // 
@@ -82,9 +121,11 @@ TcpConnection::TcpConnection(EventLoop *loop, int fd, const struct sockaddr_in &
       disConnected_(false),
       asyncProcessing_(false),
       bufferIn_(),
-      bufferOut_()
+      bufferOut_(),
+      keepalive_(true),
+      reqHealthy_(false)
 {
-    // 基于Channel设置TcpConnection服务函数，在Channel内触发调用TcpConnectionr的成员函数，类似于信号槽机制
+    // 基于Channel设置TcpConnection的服务函数，在Channel内触发调用TcpConnection的成员函数，类似于信号槽机制
     spChannel_->SetFd(fd_);
     spChannel_->SetEvents(EPOLLIN | EPOLLET);
     spChannel_->SetReadHandle(std::bind(&TcpConnection::HandleRead, this));
@@ -99,6 +140,7 @@ TcpConnection::~TcpConnection()
     // 移除事件，析构成员变量
     loop_->RemoveChannelToPoller(spChannel_.get());
     close(fd_);
+    delete timer_;
 }
 
 /*
@@ -121,19 +163,8 @@ void TcpConnection::AddChannelToLoop()
  */
 void TcpConnection::Send(const std::string &s)
 {
-    bufferOut_ = s;
-    // 判断当前线程是不是Loop IO所在线程
-    if (loop_->GetThreadId() == std::this_thread::get_id())
-    {
-        SendInLoop();
-    }
-    else
-    {
-        // 当前线程为新开线程
-        asyncProcessing_ = false;
-        // 跨线程调用,加入IO线程的任务队列，唤醒
-        loop_->AddTask(std::bind(&TcpConnection::SendInLoop, shared_from_this())); 
-    }
+    SetSendMessage(s);
+    SendBufferOut();
 }
 
 /*
@@ -150,6 +181,15 @@ void TcpConnection::Send(const char *s, int length)
     }
     bufferOut_.clear();
     bufferOut_.append(s, length);
+    SendBufferOut();
+}
+
+/*
+ * 发送信息函数，指定EventLoop执行
+ * 
+ */
+void TcpConnection::SendBufferOut()
+{
     // 判断当前线程是不是Loop IO所在线程
     if (loop_->GetThreadId() == std::this_thread::get_id())
     {
@@ -160,7 +200,9 @@ void TcpConnection::Send(const char *s, int length)
         // 当前线程为新开线程
         asyncProcessing_ = false;
         // 跨线程调用,加入IO线程的任务队列，唤醒
-        loop_->AddTask(std::bind(&TcpConnection::SendInLoop, shared_from_this())); 
+        spTcpConnection sptcpconn = shared_from_this();
+        loop_->AddTask(std::bind(&TcpConnection::SendInLoop, sptcpconn));
+        bufferOut_ = sptcpconn->bufferOut_;
     }
 }
 
@@ -188,7 +230,8 @@ void TcpConnection::SendInLoop()
         {
             // 数据已发完
             spChannel_->SetEvents(events & (~EPOLLOUT));
-            sendcompleteCallback_(shared_from_this());
+            spTcpConnection sptcpconn = shared_from_this();
+            sendcompleteCallback_(sptcpconn);
             if (halfClose_)
                 HandleClose();
         }
@@ -215,8 +258,9 @@ void TcpConnection::Shutdown()
     }
     else
     {
-        // 不是IO线程，则是跨线程调用，加入IO线程的任务队列，唤醒
-        loop_->AddTask(std::bind(&TcpConnection::ShutdownInLoop, shared_from_this()));
+        // 加入IO线程的任务队列，唤醒
+        spTcpConnection sptcpconn = shared_from_this();
+        loop_->AddTask(std::bind(&TcpConnection::ShutdownInLoop, sptcpconn));
     }
 }
 
@@ -231,8 +275,10 @@ void TcpConnection::ShutdownInLoop()
     {
         return;
     }
-    closeCallback_(shared_from_this());
-    loop_->AddTask(std::bind(connectioncleanup_, shared_from_this()));
+    spTcpConnection sptcpconn = shared_from_this();
+    closeCallback_(sptcpconn);
+    sptcpconn = shared_from_this();
+    loop_->AddTask(std::bind(connectioncleanup_, sptcpconn));
     disConnected_ = true;
 }
 
@@ -246,8 +292,11 @@ void TcpConnection::HandleRead()
     int result = recvn(fd_, bufferIn_);
     if (result > 0)
     {
+        reqHealthy_ = ParseHttpRequest();
+        timer_ = new Timer(5000, Timer::TimerType::TIMER_ONCE, std::bind(&TcpConnection::Shutdown, shared_from_this()));
         // 将读取到的缓冲区数据bufferIn_回调回动态绑定的上层处理函数messageCallback_
-        messageCallback_(shared_from_this());
+        spTcpConnection sptcpconn = shared_from_this();
+        messageCallback_(sptcpconn);
     }
     else if (result == 0)
     {
@@ -279,7 +328,8 @@ void TcpConnection::HandleWrite()
         {
             // 数据已发完
             spChannel_->SetEvents(events & (~EPOLLOUT));
-            sendcompleteCallback_(shared_from_this());
+            spTcpConnection sptcpconn = shared_from_this();
+            sendcompleteCallback_(sptcpconn);
             // 发送完毕，如果是半关闭状态，则可以close了
             if (halfClose_)
                 HandleClose();
@@ -305,11 +355,13 @@ void TcpConnection::HandleError()
     {
         return;
     }
-    errorCallback_(shared_from_this());
+    spTcpConnection sptcpconn = shared_from_this();
+    errorCallback_(sptcpconn);
     // loop_->RemoveChannelToPoller(pchannel_);
     // 连接标记为清理
     // task添加
-    loop_->AddTask(std::bind(connectioncleanup_, shared_from_this())); // 自己不能清理自己，交给loop执行，Tcpserver清理
+    sptcpconn = shared_from_this();
+    loop_->AddTask(std::bind(connectioncleanup_, sptcpconn)); // 自己不能清理自己，交给loop执行，Tcpserver清理
     disConnected_ = true;
 }
 
@@ -337,13 +389,16 @@ void TcpConnection::HandleClose()
         // 还有数据刚刚才收到，但同时又收到FIN
         if (bufferIn_.length() > 0)
         {
-            messageCallback_(shared_from_this());
+            spTcpConnection sptcpconn = shared_from_this();
+            messageCallback_(sptcpconn);
         }
     }
     else
     {
-        loop_->AddTask(std::bind(connectioncleanup_, shared_from_this()));
-        closeCallback_(shared_from_this());
+        spTcpConnection sptcpconn = shared_from_this();
+        loop_->AddTask(std::bind(connectioncleanup_, sptcpconn));
+        sptcpconn = shared_from_this();
+        closeCallback_(sptcpconn);
         disConnected_ = true;
     }
 }
@@ -407,9 +462,11 @@ void TcpConnection::SetAsyncProcessing(const bool asyncProcessing)
  * 传递的数据为char*类型，若不指定数据长度，会被第一个'\0'截断
  * 
  */
-int TcpConnection::setSendMessage(const std::string &newMsg)
+int TcpConnection::SetSendMessage(const std::string &newMsg)
 {
-    return (bufferOut_ = newMsg).length();
+    bufferOut_.clear();
+    bufferOut_.append(newMsg, 0, newMsg.length());
+    return newMsg.length();
 }
 
 /*
@@ -417,16 +474,17 @@ int TcpConnection::setSendMessage(const std::string &newMsg)
  * 传递的数据为char*类型，若不指定数据长度，会被第一个'\0'截断
  * 
  */
-int TcpConnection::addSendMessage(const std::string &newMsg)
+int TcpConnection::AddSendMessage(const std::string &newMsg)
 {
-    return (bufferOut_ += newMsg).length();
+    bufferOut_.append(newMsg, 0, newMsg.length());
+    return newMsg.length();
 }
 
 /*
  * 获取接收缓冲区的指针
  * 
  */
-std::string &TcpConnection::getBufferIn()
+std::string &TcpConnection::GetBufferIn()
 {
     return bufferIn_;
 }
@@ -435,7 +493,7 @@ std::string &TcpConnection::getBufferIn()
  * 获取接收缓冲区的指针
  * 
  */
-std::string &TcpConnection::getBufferOut()
+std::string &TcpConnection::GetBufferOut()
 {
     return bufferOut_;
 }
@@ -444,7 +502,7 @@ std::string &TcpConnection::getBufferOut()
  * 获取接收到的数据的长度
  * 
  */
-int TcpConnection::getReceiveLength()
+int TcpConnection::GetReceiveLength()
 {
     return bufferIn_.size();
 }
@@ -453,16 +511,205 @@ int TcpConnection::getReceiveLength()
  * 获取接收到的数据的长度
  * 
  */
-int TcpConnection::getSendLength()
+int TcpConnection::GetSendLength()
 {
     return bufferOut_.length();
 }
 
 /*
+ * 获取长连接标志
+ * 
+ */
+bool TcpConnection::WillKeepAlive()
+{
+    return keepalive_;
+}
+
+/*
+ * 获取连接请求解析结果状态
+ * 
+ */
+bool TcpConnection::GetReqHealthy()
+{
+    return reqHealthy_;
+}
+
+/*
+ * 设置长连接标志
+ * 
+ */
+void TcpConnection::SetKeepAlive(bool keepalive)
+{
+    keepalive_ = keepalive;
+}
+
+/*
+ * 启动定时器
+ * 
+ */
+void TcpConnection::StartTimer()
+{
+    timer_->Start();
+}
+
+/*
+ * 获取定时器指针
+ * 
+ */
+Timer *TcpConnection::GetTimer()
+{
+    return timer_;
+}
+
+/*
+ * 获取请求解析结构体的引用
+ * 
+ */
+HttpRequestContext &TcpConnection::GetReq()
+{
+    return httpRequestContext_;
+}
+
+/*
+ * 获取响应解析结构体的引用
+ * 
+ */
+HttpResponseContext &TcpConnection::GetRes()
+{
+    return httpResponseContext_;
+}
+
+/*
+ * 解析http请求信息
+ * 
+ */
+// bool TcpConnection::ParseHttpRequest(std::string &msg, HttpRequestContext &httprequestcontext)
+bool TcpConnection::ParseHttpRequest()
+{
+    std::string crlf("\r\n"), crlfcrlf("\r\n\r\n");
+    size_t prev = 0, next = 0, pos_colon;
+    std::string key, value;
+    bool parseresult = false;
+    //TODO以下解析可以改成状态机，解决一次收Http报文不完整问题
+    if ((next = bufferIn_.find(crlf, prev)) != std::string::npos)
+    {
+        std::string first_line(bufferIn_.substr(prev, next - prev));
+        prev = next;
+        std::stringstream sstream(first_line);
+        sstream >> (httpRequestContext_.method);
+        sstream >> (httpRequestContext_.url);
+        sstream >> (httpRequestContext_.version);
+    }
+    else
+    {
+        std::cout << "error received message：" << bufferIn_ << std::endl;
+        std::cout << "Error in httpParser: http_request_line isn't complete!" << std::endl;
+        parseresult = false;
+        bufferIn_.clear();
+        return parseresult;
+        // TODO 可以临时存起来，凑齐了再解析
+    }
+    size_t pos_crlfcrlf = 0;
+    if ((pos_crlfcrlf = bufferIn_.find(crlfcrlf, prev)) != std::string::npos)
+    {
+        while (prev != pos_crlfcrlf)
+        {
+            next = bufferIn_.find(crlf, prev + 2);
+            pos_colon = bufferIn_.find(":", prev + 2);
+            key = bufferIn_.substr(prev + 2, pos_colon - prev - 2);
+            value = bufferIn_.substr(pos_colon + 2, next - pos_colon - 2);
+            prev = next;
+            httpRequestContext_.header.insert(std::pair<std::string, std::string>(key, value));
+        }
+    }
+    else
+    {
+        std::cout << "Error in httpParser: http_request_header isn't complete!" << std::endl;
+        parseresult = false;
+        bufferIn_.clear();
+        return parseresult;
+    }
+    httpRequestContext_.body = bufferIn_.substr(pos_crlfcrlf + 4);
+    parseresult = true;
+    bufferIn_.clear();
+    return parseresult;
+}
+
+/*
+ * 解析http请求信息
+ * 该版函数已弃用
+ * 
+ */
+// bool TcpConnection::ParseHttpRequest(char *msg, int msgLength, HttpRequestContext &httprequestcontext)
+// {
+//     const char *crlf = "\r\n";
+//     const char *crlfcrlf = "\r\n\r\n";
+//     bool parseresult = false;
+//     char *preFind = msg, *nextFind = NULL, *pos_colon = nullptr;
+//     std::string key, value;
+//     char *const pos_crlfcrlf = strstr(preFind, crlfcrlf);
+//     char buffer[BUFSIZE];
+//     // TODO 以下解析可以改成状态机，解决一次收Http报文不完整问题
+//     if(nextFind = strstr(preFind, crlf))
+//     {
+//         memcpy(buffer, preFind, nextFind - preFind);
+//         std::string first_line(buffer, nextFind - preFind);
+//         preFind = nextFind + 2;
+//         std::stringstream sstream(first_line);
+//         sstream >> (httprequestcontext.method);
+//         sstream >> (httprequestcontext.url);
+//         sstream >> (httprequestcontext.version);
+//     }
+//     else
+//     {
+//         std::cout << "接收到信息：" << msg << std::endl;
+//         std::cout << "Error in httpParser: http_request_line 不完整!" << std::endl;
+//         parseresult = false;
+//         return parseresult;
+//         //可以临时存起来，凑齐了再解析
+//     }
+//     if(pos_crlfcrlf)
+//     {
+//         while(pos_crlfcrlf != (nextFind = strstr(preFind, crlf)))
+//         {
+//             // 仍在查询请求头部分
+//             if(nextFind)
+//             {
+//                 pos_colon = strstr(preFind + 2, ":");
+//                 memcpy(buffer, preFind, pos_colon - preFind);
+//                 key.clear();
+//                 key.append(buffer, pos_colon - preFind);
+//                 memcpy(buffer, pos_colon + 2, nextFind - (pos_colon + 2));
+//                 value.clear();
+//                 value.append(buffer, nextFind - (pos_colon + 2));
+//                 preFind = nextFind + 2;
+//                 httprequestcontext.header.insert(std::pair<std::string, std::string>(key, value));
+//             }
+//             else
+//                 break;
+//         }
+//     }
+//     else
+//     {
+//         std::cout << "接收到信息：" << msg << std::endl;
+//         std::cout << "Error in httpParser: http_request_header 不完整!" << std::endl;
+//         parseresult = false;
+//         return parseresult;
+//     }
+//     std::string conLen = httprequestcontext.header["Content-Length"];
+//     int contentLength = conLen.empty() ? msgLength - (pos_crlfcrlf + 4 - msg) : atoi(conLen.c_str());
+//     memcpy(buffer, pos_crlfcrlf + 4, contentLength);
+//     httprequestcontext.body.clear();
+//     httprequestcontext.body.append(buffer, 0, contentLength);
+//     parseresult = true;
+//     return parseresult;
+// }
+
+/*
  * 读取客户端数据
  * 
  */
-int recvn(int fd, std::string &recvMsg)
+int TcpConnection::recvn(int fd, std::string &recvMsg)
 {
     recvMsg.clear();
     int nbyte = 0;
@@ -513,7 +760,7 @@ int recvn(int fd, std::string &recvMsg)
  * 发送数据到客户端
  * 
  */
-int sendn(int fd, std::string &sendMsg)
+int TcpConnection::sendn(int fd, std::string &sendMsg)
 {
     ssize_t nbyte = 0;
     int sendsum = 0;

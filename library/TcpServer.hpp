@@ -33,7 +33,7 @@ class TcpServer
 {
 public:
     typedef std::shared_ptr<TcpConnection> spTcpConnection;
-    typedef std::function<void(const spTcpConnection &)> Callback;
+    typedef std::function<void(spTcpConnection &)> Callback;
     TcpServer(EventLoop *loop, const int port, const int threadnum = 0);
     ~TcpServer();
     void Start();   // 创建所需的事件池子线程，添加tcp服务Channel实例为监听对象
@@ -58,7 +58,7 @@ private:
     Callback errorCallback_;            // 出错处理回调函数
     void OnNewConnection();             // 处理新连接，调用绑定的newConnectionCallback_回调函数
     void OnConnectionError();           // 处理连接错误，关闭套接字
-    void RemoveConnection(const std::shared_ptr<TcpConnection> sptcpconnection);    // 连接清理，这里应该由EventLoop来执行，投递回主线程删除 OR 多线程加锁删除
+    void RemoveConnection(std::shared_ptr<TcpConnection> sptcpconnection);    // 连接清理，这里应该由EventLoop来执行，投递回主线程删除 OR 多线程加锁删除
 
 };
 
