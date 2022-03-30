@@ -1,5 +1,5 @@
 
-#include "http_server.h"
+#include "resource_server.h"
 
 /*
  * main函数，服务程序入口函数
@@ -9,10 +9,10 @@ int main(int argc, char *argv[])
 {
     signal(SIGUSR1, sighandler1);
     signal(SIGUSR2, sighandler2);
-    signal(SIGINT, sighandler2); // SIG_IGN = Ctrl+C
-    signal(SIGPIPE, SIG_IGN);    // 忽略信号的处理程序
+    signal(SIGINT, sighandler2);// SIG_IGN = Ctrl+C
+    signal(SIGPIPE, SIG_IGN);   // 忽略信号的处理程序
     // 默认初始化参数
-    int port = 80;              // 服务端口
+    int port = 8005;            // 服务端口
     int iothreadnum = 0;        // EventLoop工作线程数量
     int workerthreadnum = 4;    // 线程池工作线程数量
     if (argc == 4)
@@ -24,6 +24,7 @@ int main(int argc, char *argv[])
     }
     EventLoop loop;
     HttpServer httpServer(&loop, workerthreadnum, iothreadnum, port);
+    httpServer.Start();
     try
     {
         loop.loop();

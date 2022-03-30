@@ -15,7 +15,6 @@ class EventLoopThreadPool
 public:
     EventLoopThreadPool(EventLoop *mainloop, int threadnum = 0);
     ~EventLoopThreadPool();
-    void Start();   // 在所有线程类实例EventLoopThread内创建真实的子线程thread对象并运行
     EventLoop* GetNextLoop();   // 轮询分发EventLoop指针
 
 private:
@@ -50,22 +49,6 @@ EventLoopThreadPool::~EventLoopThreadPool()
     }
     // 清空eventLoopThreadList_列表内所有已失效的子线程实例对象
     eventLoopThreadList_.clear();
-}
-
-/*
- * 在所有线程类实例EventLoopThread内创建真实的子线程thread对象并运行
- * 
- */
-void EventLoopThreadPool::Start()
-{
-    if (threadNum_ > 0)
-    {
-        for (int i = 0; i < threadNum_; ++i)
-        {
-            // 创建工作子线程thread对象
-            eventLoopThreadList_[i]->Start();
-        }
-    }
 }
 
 /*

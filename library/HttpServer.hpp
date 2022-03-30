@@ -63,7 +63,7 @@ class HttpServer
 public:
     typedef std::shared_ptr<TcpConnection> spTcpConnection;
     typedef std::shared_ptr<Timer> spTimer;
-    HttpServer(EventLoop *loop, const int port, const int loopThreadNum, const int workThreadNum = 0);
+    HttpServer(EventLoop *loop, const int workThreadNum = 2, ThreadPool *threadPool = NULL, const int loopThreadNum = 0, const int port = 80, TcpServer *shareTcpServer = NULL);
     ~HttpServer();
     int getFileSize(char* file_name);   // 获取文件大小
     void HttpProcess(spTcpConnection &sptcpconn);   // 处理请求并响应
@@ -73,33 +73,32 @@ public:
 private:
     std::string serviceName_;
     std::mutex mutex_;
-    std::map<spTcpConnection, spTimer> timerList_;  // 
+    std::map<spTcpConnection, spTimer> timerList_;
     int workThreadNum_;
     int loopThreadNum_;
-    TcpServer tcpserver_;       // 基础网络服务TcpServer
+    int tcpServerPort_;         // tcpServer的EPOLL的服务端口
+    TcpServer *tcpserver_;      // 基础网络服务TcpServer
     ThreadPool *threadpool_;    // 线程池
     void HandleMessage(spTcpConnection &sptcpconn);       // HttpServer模式处理收到的请求
-    void HandleSendComplete(spTcpConnection &sptcpconn);  // HttpServer模式数据发送客户端完毕
+    void HandleSendComplete(spTcpConnection &sptcpconn);  // HttpServer模式数据处理发送客户端完毕
     void HandleClose(spTcpConnection &sptcpconn);         // HttpServer模式处理连接断开
     void HandleError(spTcpConnection &sptcpconn);         // HttpServer模式处理连接出错
 
 };
 
-HttpServer::HttpServer(EventLoop *loop, const int port, const int loopThreadNum, const int workThreadNum)
+HttpServer::HttpServer(EventLoop *loop, const int workThreadNum, ThreadPool *threadPool, const int loopThreadNum, const int port, TcpServer *shareTcpServer)
     : serviceName_("HttpService"),
       loopThreadNum_(loopThreadNum),
       workThreadNum_(workThreadNum),
-      tcpserver_(loop, port, loopThreadNum)
+      tcpServerPort_(port),
+      threadpool_(threadPool ? threadPool : (workThreadNum_ > 0 ? new ThreadPool(workThreadNum_) : NULL)),
+      tcpserver_(shareTcpServer ? shareTcpServer : new TcpServer(loop, tcpServerPort_, loopThreadNum))
 {
-    if(workThreadNum_)
-    {
-        threadpool_ = new ThreadPool(workThreadNum_);
-    }
     // 基于TcpServer设置HttpServer服务函数，在TcpServer内触发调用HttpServer的成员函数，类似于信号槽机制
-    tcpserver_.RegisterHandler(serviceName_, TcpServer::ReadMessageHandler, std::bind(&HttpServer::HandleMessage, this, std::placeholders::_1));
-    tcpserver_.RegisterHandler(serviceName_, TcpServer::SendOverHandler, std::bind(&HttpServer::HandleSendComplete, this, std::placeholders::_1));
-    tcpserver_.RegisterHandler(serviceName_, TcpServer::CloseConnHandler, std::bind(&HttpServer::HandleClose, this, std::placeholders::_1));
-    tcpserver_.RegisterHandler(serviceName_, TcpServer::ErrorConnHandler, std::bind(&HttpServer::HandleError, this, std::placeholders::_1));
+    tcpserver_->RegisterHandler(serviceName_, TcpServer::ReadMessageHandler, std::bind(&HttpServer::HandleMessage, this, std::placeholders::_1));
+    tcpserver_->RegisterHandler(serviceName_, TcpServer::SendOverHandler, std::bind(&HttpServer::HandleSendComplete, this, std::placeholders::_1));
+    tcpserver_->RegisterHandler(serviceName_, TcpServer::CloseConnHandler, std::bind(&HttpServer::HandleClose, this, std::placeholders::_1));
+    tcpserver_->RegisterHandler(serviceName_, TcpServer::ErrorConnHandler, std::bind(&HttpServer::HandleError, this, std::placeholders::_1));
     threadpool_->Start();
     TimerManager::GetTimerManagerInstance()->Start();
 }
@@ -109,6 +108,10 @@ HttpServer::~HttpServer()
     if(workThreadNum_)
     {
         delete threadpool_;
+    }
+    if(tcpServerPort_)
+    {
+        delete tcpserver_;
     }
 }
 
@@ -358,7 +361,6 @@ void HttpServer::HttpError(spTcpConnection &sptcpconn, const int err_num, const 
  */
 void HttpServer::Start()
 {
-    tcpserver_.Start();
 }
 
 /*

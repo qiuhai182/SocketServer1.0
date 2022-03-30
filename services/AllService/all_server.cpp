@@ -20,12 +20,17 @@ int main(int argc, char *argv[])
     {
         // 启动初始化参数
         port = atoi(argv[1]);
-        iothreadnum = atoi(argv[2]);        // EventLoop工作线程数量
-        workerthreadnum = atoi(argv[3]);    // 线程池工作线程数量
+        iothreadnum = atoi(argv[2]);        // EventLoop工作线程数量，负责连接监听与数据收发
+        workerthreadnum = atoi(argv[3]);    // 线程池工作线程数量，负责收到的请求数据进行逻辑处理
     }
 
-    EventLoop loop;
-    HttpServer httpServer(&loop, port, iothreadnum, workerthreadnum);
+    EventLoop loop;     // 多服务共享EventLoop
+    TcpServer tcpServer(&loop, port, iothreadnum);  // 多服务共享基于EPOLL的TcpServer
+    ThreadPool threadPool(workerthreadnum);         // 多服务共享线程池
+    // 以下多个服务构造时使用共享的tcpServer和threadPool，则其相应构造参数可以置为0
+    // 这样做的好处是析构时每个服务内部可根据构造参数判断是否需要delete对象指针：tcpServer和threadPool
+    HttpServer httpServer(&loop, 0, &threadPool, 0, 0, &tcpServer);
+    ResourceServer resourceServer(&loop, 0, &threadPool, 0, 0, &tcpServer);
     httpServer.Start();
     try
     {

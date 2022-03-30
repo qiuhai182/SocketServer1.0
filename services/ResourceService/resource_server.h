@@ -1,11 +1,10 @@
 #pragma once
 
-#ifndef _ALL_SERVICE_H_
-#define _ALL_SERVICE_H_
+#ifndef _RESOURCE_SERVER_H_
+#define _RESOURCE_SERVER_H_
 
 #include <csignal>
 #include "../../library/HttpServer.hpp"
-#include "../../library/ResourceServer.hpp"
 
 EventLoop *lp; // 事件池指针
 

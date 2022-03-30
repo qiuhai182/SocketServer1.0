@@ -17,7 +17,6 @@ public:
     ~EventLoopThread();
     EventLoop* GetLoop();   // 获取事件线程的事件池对象指针
     void ThreadFunc();      // 工作线程的回调函数
-    void Start();           // 创建工作子线程并运行
 
 private:
     std::thread childThread_;       // 工作子线程
@@ -33,6 +32,7 @@ EventLoopThread::EventLoopThread()
       threadName_(""),
       loop_(NULL)
 {
+    childThread_ = std::thread(&EventLoopThread::ThreadFunc, this);
 }
 
 EventLoopThread::~EventLoopThread()
@@ -50,15 +50,6 @@ EventLoopThread::~EventLoopThread()
 EventLoop *EventLoopThread::GetLoop()
 {
     return loop_;
-}
-
-/*
- * 创建工作子线程并运行
- * 
- */
-void EventLoopThread::Start()
-{
-    childThread_ = std::thread(&EventLoopThread::ThreadFunc, this);
 }
 
 /*

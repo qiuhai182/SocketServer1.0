@@ -40,7 +40,6 @@ public:
     static const std::string SendOverHandler;
     static const std::string CloseConnHandler;
     static const std::string ErrorConnHandler;
-    void Start();   // 创建所需的事件池子线程，添加tcp服务Channel实例为监听对象
     // 高层服务向tcpServer注册传递给底层connection->channel的处理函数
     void RegisterHandler(std::string serviceName, const std::string handlerType, const Callback &handlerFunc);
     void BindDynamicHandler(spTcpConnection &sptcpconnection);   // 动态绑定sptcpconnection的事件处理函数
@@ -79,23 +78,13 @@ TcpServer::TcpServer(EventLoop *loop, const int port, const int threadnum)
     tcpServerChannel_.SetFd(tcpServerSocket_.fd()); // TcpServer服务Channel绑定服务套接字tcpServerSocket_
     tcpServerChannel_.SetReadHandle(std::bind(&TcpServer::OnNewConnection, this));
     tcpServerChannel_.SetErrorHandle(std::bind(&TcpServer::OnConnectionError, this));
+    tcpServerChannel_.SetEvents(EPOLLIN | EPOLLET);     // 设置当前连接的监听事件
+    std::cout << "输出测试：TcpServer服务套接字添加到MainEventLoop的epoll内进行监听，tcpServerSockfd：" << tcpServerSocket_.fd() << std::endl;
+    mainLoop_->AddChannelToPoller(&tcpServerChannel_);  // 主事件池添加当前Channel为监听对象
 }
 
 TcpServer::~TcpServer()
 {
-}
-
-/*
- * 创建所需的事件池子线程并启动
- * 添加tcp服务Channel实例为监听对象
- * 
- */
-void TcpServer::Start()
-{
-    eventLoopThreadPool.Start();    // 创建所需的所有事件池子线程实例
-    tcpServerChannel_.SetEvents(EPOLLIN | EPOLLET);     // 设置当前连接的监听事件
-    std::cout << "输出测试：TcpServer服务套接字添加到MainEventLoop的epoll内进行监听，tcpServerSockfd：" << tcpServerSocket_.fd() << std::endl;
-    mainLoop_->AddChannelToPoller(&tcpServerChannel_);  // 主事件池添加当前Channel为监听对象
 }
 
 /*

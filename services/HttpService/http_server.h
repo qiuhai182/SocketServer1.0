@@ -3,8 +3,7 @@
 #ifndef _HTTP_SERVER_H_
 #define _HTTP_SERVER_H_
 
-#include <signal.h>
-#include "../../library/EventLoop.hpp"
+#include <csignal>
 #include "../../library/HttpServer.hpp"
 
 EventLoop *lp; // 事件池指针
