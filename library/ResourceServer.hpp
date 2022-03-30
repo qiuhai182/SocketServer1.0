@@ -30,6 +30,15 @@ public:
     ResourceServer();
     ~ResourceServer();
     void Start();
+private:
+    std::string serviceName_;
 
 };
+
+
+ResourceServer::ResourceServer()
+    :  serviceName_("ResourceService")
+{
+    ;
+}
 

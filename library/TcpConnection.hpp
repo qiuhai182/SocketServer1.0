@@ -29,9 +29,12 @@
 // http请求信息结构
 typedef struct _HttpRequestContext
 {
-    std::string method;
-    std::string url;
-    std::string version;
+    std::string method;     // http方法（get、post等）
+    std::string url;        // http url
+    std::string serviceName;// url解析出请求的服务名
+    std::string handlerName;// url解析出请求的服务的处理函数
+    std::string resourceUrl;// url的"/服务名/函数名"后的部分
+    std::string version;    // http version
     std::map<std::string, std::string> header;
     std::string body;
 } HttpRequestContext;
@@ -53,40 +56,46 @@ public:
     typedef std::function<void(spTcpConnection &)> Callback; // 回调函数
     TcpConnection(EventLoop *loop, int fd, const struct sockaddr_in &clientaddr);
     ~TcpConnection();
-    int fd() const { return fd_; }  // 获取套接字描述符
+    int fd() const { return fd_; }              // 获取套接字描述符
     EventLoop *GetLoop() const { return loop_; }// 获取事件池指针
     int recvn(int fd, std::string &recvMsg);    // 从客户端fd接收数据
     int sendn(int fd, std::string &sendMsg);    // 发送数据到客户端fd
     void Send(const std::string &s);            // 发送信息函数，指定EventLoop执行
     void Send(const char *s, int length = 0);   // 发送信息函数，指定EventLoop执行
     void SendBufferOut();                       // 发送信息函数，指定EventLoop执行
-    bool ParseHttpRequest();    // 解析http请求信息
-    bool GetReqHealthy();       // 获取连接请求解析结果状态
-    void SendInLoop();          // 发送信息函数，由EventLoop执行
-    void AddChannelToLoop();    // EventLoop添加监听Channel
-    void Shutdown();            // 关闭当前连接，指定EventLoop执行
-    void ShutdownInLoop();      // 关闭当前连接，由EventLoop执行
-    void HandleRead();          // 接收客户端发送的数据，调用绑定的messageCallback_函数
-    void HandleWrite();         // 向客户端发送数据
-    void HandleError();         // 处理连接错误
-    void HandleClose();         // 处理客户端连接关闭
-    std::string &GetBufferIn(); // 获取接收缓冲区的指针
-    std::string &GetBufferOut();// 获取发送缓冲区的指针
-    int GetReceiveLength();     // 获取接收到的数据的长度
-    int GetSendLength();        // 获取待发送数据的长度
-    Timer *GetTimer();          // 获取定时器指针
-    void StartTimer();          // 启动定时器
-    bool WillKeepAlive();       // 获取长连接标志
-    void SetKeepAlive(bool keepalive);                  // 设置长连接标志
-    HttpRequestContext &GetReq();                       // 获取请求解析结构体的引用
-    HttpResponseContext &GetRes();                      // 获取响应解析结构体的引用
-    int SetSendMessage(const std::string &newMsg);      // 重置bufferOut_的内容
-    int AddSendMessage(const std::string &newMsg);      // 添加新数据到bufferOut_
-    void SetMessaeCallback(const Callback &cb);         // 设置连接处理函数
+    bool ParseHttpRequest();                    // 解析http请求信息
+    bool GetReqHealthy();                       // 获取连接请求解析结果状态
+    void SendInLoop();                          // 发送信息函数，由EventLoop执行
+    void AddChannelToLoop();                    // EventLoop添加监听Channel
+    void Shutdown();                            // 关闭当前连接，指定EventLoop执行
+    void ShutdownInLoop();                      // 关闭当前连接，由EventLoop执行
+    void HandleRead();                          // 接收客户端发送的数据，调用绑定的messageCallback_函数
+    void HandleWrite();                         // 向客户端发送数据
+    void HandleError();                         // 处理连接错误
+    void HandleClose();                         // 处理客户端连接关闭
+    std::string &GetBufferIn();                 // 获取接收缓冲区的指针
+    std::string &GetBufferOut();                // 获取发送缓冲区的指针
+    int GetReceiveLength();                     // 获取接收到的数据的长度
+    int GetSendLength();                        // 获取待发送数据的长度
+    Timer *GetTimer();                          // 获取定时器指针
+    void StartTimer();                          // 启动定时器
+    bool WillKeepAlive();                       // 获取长连接标志
+    void SetKeepAlive(bool keepalive);          // 设置长连接标志
+    HttpRequestContext &GetReq();               // 获取请求解析结构体的引用
+    HttpResponseContext &GetRes();              // 获取响应解析结构体的引用
+    Callback GetMessageCallback();              // 设置连接处理函数
+    Callback GetSendCompleteCallback();         // 设置数据发送完毕处理函数
+    Callback GetCloseCallback();                // 设置关闭处理函数
+    Callback GetErrorCallback();                // 设置出错处理函数
+    Callback GetConnectionCleanUp();            // 设置连接清理函数
+    void SetMessaeCallback(const Callback &cb); // 设置连接处理函数
     void SetSendCompleteCallback(const Callback &cb);   // 设置数据发送完毕处理函数
     void SetCloseCallback(const Callback &cb);          // 设置关闭处理函数
     void SetErrorCallback(const Callback &cb);          // 设置出错处理函数
     void SetConnectionCleanUp(const Callback &cb);      // 设置连接清空函数
+    int SetSendMessage(const std::string &newMsg);      // 重置bufferOut_的内容
+    int AddSendMessage(const std::string &newMsg);      // 添加新数据到bufferOut_
+    void SetDynamicHandler(const Callback &cb);         // 设置向TcpServer申请动态绑定函数的函数
     void SetAsyncProcessing(const bool asyncProcessing);// 设置异步处理标志
 
 private:
@@ -102,13 +111,14 @@ private:
     Timer *timer_;                  // 定时器
     std::string bufferIn_;          // 接收数据缓冲区
     std::string bufferOut_;         // 发送数据缓冲区
-    HttpRequestContext httpRequestContext_;     // 
-    HttpResponseContext httpResponseContext_;   // 
-    Callback messageCallback_;      // 
-    Callback sendcompleteCallback_; // 
-    Callback closeCallback_;        // 
-    Callback errorCallback_;        // 
-    Callback connectioncleanup_;    // 
+    HttpRequestContext httpRequestContext_;     // 请求解析结构
+    HttpResponseContext httpResponseContext_;   // 响应结构
+    Callback BindDynamicHandler_;   // 向TcpServer申请动态绑定函数
+    Callback messageCallback_;      // 请求响应函数
+    Callback sendcompleteCallback_; // 发送完毕处理函数
+    Callback closeCallback_;        // 连接关闭处理函数
+    Callback errorCallback_;        // 错误处理函数
+    Callback connectioncleanup_;    // 连接清理函数
 
 };
 
@@ -149,11 +159,6 @@ TcpConnection::~TcpConnection()
  */
 void TcpConnection::AddChannelToLoop()
 {
-    // bug segement fault
-    // https:// blog.csdn.net/littlefang/article/details/37922113
-    // 多线程下，加入loop的任务队列
-    // 主线程直接执行
-    // loop_->AddChannelToPoller(pchannel_);
     loop_->AddTask(std::bind(&EventLoop::AddChannelToPoller, loop_, spChannel_.get()));
 }
 
@@ -290,13 +295,27 @@ void TcpConnection::HandleRead()
 {
     // 接收数据，写入缓冲区bufferIn_
     int result = recvn(fd_, bufferIn_);
+    // 在此向TcpServer请求函数绑定
+    spTcpConnection sptcpconn = shared_from_this();
+    BindDynamicHandler_(sptcpconn);
+    messageCallback_ = std::move(sptcpconn->GetMessageCallback());
+    sendcompleteCallback_ = std::move(sptcpconn->GetSendCompleteCallback());
+    closeCallback_ = std::move(sptcpconn->GetCloseCallback());
+    errorCallback_ = std::move(sptcpconn->GetErrorCallback());
+    httpRequestContext_.serviceName = std::move(sptcpconn->GetReq().serviceName);
+    httpRequestContext_.handlerName = std::move(sptcpconn->GetReq().handlerName);
+    httpRequestContext_.resourceUrl = std::move(sptcpconn->GetReq().resourceUrl);
+    std::cout << "测试shared。。。函数复制情况 深复制？" << (&httpRequestContext_ == &(sptcpconn->GetReq())) << std::endl;
     if (result > 0)
     {
         reqHealthy_ = ParseHttpRequest();
         timer_ = new Timer(5000, Timer::TimerType::TIMER_ONCE, std::bind(&TcpConnection::Shutdown, shared_from_this()));
         // 将读取到的缓冲区数据bufferIn_回调回动态绑定的上层处理函数messageCallback_
-        spTcpConnection sptcpconn = shared_from_this();
+        sptcpconn = shared_from_this();
+        timer_->Start();
         messageCallback_(sptcpconn);
+        timer_ = sptcpconn->GetTimer();
+        Keepalive_ = sptcpconn->WillKeepAlive();
     }
     else if (result == 0)
     {
@@ -404,6 +423,15 @@ void TcpConnection::HandleClose()
 }
 
 /*
+ * 设置向TcpServer申请动态绑定函数的函数
+ * 
+ */
+void TcpConnection::SetDynamicHandler(const Callback &cb)
+{
+    BindDynamicHandler_ = cb;
+}
+
+/*
  * 设置连接处理函数
  * 
  */
@@ -446,6 +474,51 @@ void TcpConnection::SetErrorCallback(const Callback &cb)
 void TcpConnection::SetConnectionCleanUp(const Callback &cb)
 {
     connectioncleanup_ = cb;
+}
+
+/*
+ * 获取连接处理函数
+ * 
+ */
+TcpConnection::Callback TcpConnection::GetMessageCallback()
+{
+    return messageCallback_;
+}
+
+/*
+ * 获取数据发送完毕处理函数
+ * 
+ */
+TcpConnection::Callback TcpConnection::GetSendCompleteCallback()
+{
+    return sendcompleteCallback_ ;
+}
+
+/*
+ * 获取关闭处理函数
+ * 
+ */
+TcpConnection::Callback TcpConnection::GetCloseCallback()
+{
+    return closeCallback_;
+}
+
+/*
+ * 获取出错处理函数
+ * 
+ */
+TcpConnection::Callback TcpConnection::GetErrorCallback()
+{
+    return errorCallback_;
+}
+
+/*
+ * 获取连接清空函数
+ * 
+ */
+TcpConnection::Callback TcpConnection::GetConnectionCleanUp()
+{
+    return connectioncleanup_;
 }
 
 /*
@@ -583,7 +656,6 @@ HttpResponseContext &TcpConnection::GetRes()
  * 解析http请求信息
  * 
  */
-// bool TcpConnection::ParseHttpRequest(std::string &msg, HttpRequestContext &httprequestcontext)
 bool TcpConnection::ParseHttpRequest()
 {
     std::string crlf("\r\n"), crlfcrlf("\r\n\r\n");
@@ -599,6 +671,7 @@ bool TcpConnection::ParseHttpRequest()
         sstream >> (httpRequestContext_.method);
         sstream >> (httpRequestContext_.url);
         sstream >> (httpRequestContext_.version);
+        std::cout << "解析出url：" << httpRequestContext_.url << std::endl;
     }
     else
     {

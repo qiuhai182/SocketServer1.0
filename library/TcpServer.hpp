@@ -1,6 +1,6 @@
 
 // tcpServer类：
-//  实现基于socket的网络服务
+//  实现基于socket的网络服务，管理所有的tcp连接实例TcpConnection
 //  是其他一切网络服务的基础服务提供类
 //  tcpServer内部生成一个Channel实例用于监听客户端连接
 
@@ -36,12 +36,14 @@ public:
     typedef std::function<void(spTcpConnection &)> Callback;
     TcpServer(EventLoop *loop, const int port, const int threadnum = 0);
     ~TcpServer();
+    static const std::string ReadMessageHandler;
+    static const std::string SendOverHandler;
+    static const std::string CloseConnHandler;
+    static const std::string ErrorConnHandler;
     void Start();   // 创建所需的事件池子线程，添加tcp服务Channel实例为监听对象
-    void SetNewConnCallback(const Callback &cb);            // 设置新连接处理函数
-    void SetMessageCallback(const Callback &cb);     // 设置消息处理函数
-    void SetSendCompleteCallback(const Callback &cb);       // 设置数据发送完毕处理函数
-    void SetCloseCallback(const Callback &cb);              // 设置连接关闭处理函数
-    void SetErrorCallback(const Callback &cb);              // 设置出错处理函数
+    // 高层服务向tcpServer注册传递给底层connection->channel的处理函数
+    void RegisterHandler(std::string serviceName, const std::string handlerType, const Callback &handlerFunc);
+    void BindDynamicHandler(spTcpConnection sptcpconnection);   // 动态绑定sptcpconnection的事件处理函数
 
 private:
     std::mutex mutex_;
@@ -49,18 +51,19 @@ private:
     Channel tcpServerChannel_;      // 连接Channel实例
     EventLoop *mainLoop_;           // 事件池主逻辑控制实例
     int connCount_;                 // 连接计数
-    EventLoopThreadPool eventLoopThreadPool;    // 多线程事件池
-    std::map<int, std::shared_ptr<TcpConnection>> tcpConnList_; // 套接字描述符->连接抽象类实例
-    Callback newConnectionCallback_;    // 新连接处理回调函数
-    Callback messageCallback_;   // 消息处理回调函数
-    Callback sendCompleteCallback_;     // 数据发送完毕处理回调函数
-    Callback closeCallback_;            // 连接关闭处理回调函数
-    Callback errorCallback_;            // 出错处理回调函数
-    void OnNewConnection();             // 处理新连接，调用绑定的newConnectionCallback_回调函数
-    void OnConnectionError();           // 处理连接错误，关闭套接字
-    void RemoveConnection(std::shared_ptr<TcpConnection> sptcpconnection);    // 连接清理，这里应该由EventLoop来执行，投递回主线程删除 OR 多线程加锁删除
+    EventLoopThreadPool eventLoopThreadPool;        // 多线程事件池
+    std::map<int, spTcpConnection> tcpConnList_;    // 套接字描述符->连接抽象类实例
+    std::map<std::string, std::map<std::string, Callback>> serviceHandlers_;    // 不同服务根据服务名及操作名注册的操作函数
+    void OnNewConnection();         // 处理新连接
+    void OnConnectionError();       // 处理连接错误，关闭套接字
+    void RemoveConnection(spTcpConnection sptcpconnection);    // 连接清理，这里应该由EventLoop来执行，投递回主线程删除 OR 多线程加锁删除
 
 };
+
+const std::string TcpServer::ReadMessageHandler = "ReadMessageHandler";
+const std::string TcpServer::SendOverHandler = "SendOverHandler";
+const std::string TcpServer::CloseConnHandler = "CloseConnHandler";
+const std::string TcpServer::ErrorConnHandler = "ErrorConnHandler";
 
 TcpServer::TcpServer(EventLoop *loop, const int port, const int threadnum)
     : tcpServerSocket_(),
@@ -96,51 +99,64 @@ void TcpServer::Start()
 
 /*
  * 设置新连接处理函数
+ * 可以重复注册同一个操作函数，实际为覆盖注册
  * 
  */
-void TcpServer::SetNewConnCallback(const Callback &cb)
+void TcpServer::RegisterHandler(std::string serviceName, const std::string handlerType, const Callback &handlerFunc)
 {
-    newConnectionCallback_ = cb;
+    if(serviceHandlers_.end() == serviceHandlers_.find(serviceName))
+    {
+        // serviceName服务尚未注册过任何操作函数
+        std::map<std::string, Callback> serviceHandlers;
+        serviceHandlers_[serviceName] = std::move(serviceHandlers);
+    }
+    serviceHandlers_[serviceName][handlerType] = handlerFunc;
 }
 
 /*
- * 设置消息处理函数
+ * 动态绑定sptcpconnection的事件处理函数
  * 
  */
-void TcpServer::SetMessageCallback(const Callback &cb)
+void BindDynamicHandler(spTcpConnection sptcpconnection)
 {
-    messageCallback_ = cb;
+    HttpRequestContext &httpRequestContext = sptcpconnection->GetReq();
+    std::string url = httpRequestContext.url;
+    std::string &serviceName = httpRequestContext.serviceName;
+    std::string &handlerName = httpRequestContext.handlerName;
+    std::string &resourceUrl = httpRequestContext.resourceUrl;
+    size_t nextFind = url.find('/', 1);
+    if(std::string::npos != nextFind)
+    {
+        serviceName = url.substr(1, nextFind);
+        if(serviceHandlers_.end() == serviceHandlers_.find(serviceName))
+        {
+            serviceName = "HttpService";
+        }
+        else
+        {
+            url.erase(0, nextFind);
+            nextFind = url.find('/', 1); // 可能有，也可能无
+            if(std::string::npos == nextFind)
+            {
+                nextFind = url.length();
+            }
+            handlerName = url.substr(1, nextFind);
+            resourceUrl = url.substr(nextFind, url.size())
+        }
+    }
+    else
+    {
+        serviceName = "HttpService";
+    }
+    // 基于TcpConnection设置TcpServer服务函数，在TcpConnection内触发调用TcpServer的成员函数，类似于信号槽机制
+    sptcpconnection->SetMessaeCallback(serviceHandlers_[ParseServiceName()][]);
+    sptcpconnection->SetSendCompleteCallback();
+    sptcpconnection->SetCloseCallback();
+    sptcpconnection->SetErrorCallback();
 }
 
 /*
- * 设置数据发送完毕处理函数
- * 
- */
-void TcpServer::SetSendCompleteCallback(const Callback &cb)
-{
-    sendCompleteCallback_ = cb;
-}
-
-/*
- * 设置连接关闭处理函数
- * 
- */
-void TcpServer::SetCloseCallback(const Callback &cb)
-{
-    closeCallback_ = cb;
-}
-
-/*
- * 设置出错处理函数
- * 
- */
-void TcpServer::SetErrorCallback(const Callback &cb)
-{
-    errorCallback_ = cb;
-}
-
-/*
- * 处理新连接，再调用绑定的newConnectionCallback_函数
+ * 处理新连接
  * 
  */
 void TcpServer::OnNewConnection()
@@ -164,22 +180,14 @@ void TcpServer::OnNewConnection()
         // 也可能是事件池工作线程
         // 无论是哪一种，在运行期间都会循环调用loop的poll监听直至服务关闭
         EventLoop *loop = eventLoopThreadPool.GetNextLoop();
-        // 创建连接抽象类实例TcpConnection
+        // 创建连接抽象类实例TcpConnection，创建时clientfd已有请求数据待读取
         std::shared_ptr<TcpConnection> sptcpconnection = std::make_shared<TcpConnection>(loop, clientfd, clientaddr);
-        // 基于TcpConnection设置TcpServer服务函数，在TcpConnection内触发调用TcpServer的成员函数，类似于信号槽机制
-        sptcpconnection->SetMessaeCallback(messageCallback_);
-        sptcpconnection->SetSendCompleteCallback(sendCompleteCallback_);
-        sptcpconnection->SetCloseCallback(closeCallback_);
-        sptcpconnection->SetErrorCallback(errorCallback_);
         sptcpconnection->SetConnectionCleanUp(std::bind(&TcpServer::RemoveConnection, this, std::placeholders::_1));
         {
             // 无名作用域
             std::lock_guard<std::mutex> lock(mutex_);
             tcpConnList_[clientfd] = sptcpconnection;
         }
-        newConnectionCallback_(sptcpconnection); // 调用动态绑定的newConnectionCallback_函数
-        // TODO Bug，应该把事件添加的操作放到最后,否则bug segement fault,导致HandleMessage中的phttpsession==NULL
-        // 总之就是做好一切准备工作再添加事件到epoll！！！
         sptcpconnection->AddChannelToLoop();
     }
 }

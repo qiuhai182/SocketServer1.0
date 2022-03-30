@@ -57,7 +57,6 @@
 #include "TcpConnection.hpp"
 #include "ThreadPool.hpp"
 
-int getFileSize(char* file_name);   // 获取文件大小
 
 class HttpServer
 {
@@ -66,18 +65,19 @@ public:
     typedef std::shared_ptr<Timer> spTimer;
     HttpServer(EventLoop *loop, const int port, const int loopThreadNum, const int workThreadNum = 0);
     ~HttpServer();
+    int getFileSize(char* file_name);   // 获取文件大小
     void HttpProcess(spTcpConnection &sptcpconn);   // 处理请求并响应
     void HttpError(spTcpConnection &sptcpconn, const int err_num, const std::string &short_msg);
     void Start();   // tcpServer创建所需的事件池子线程并启动，添加tcp服务Channel实例为监听对象
 
 private:
+    std::string serviceName_;
     std::mutex mutex_;
     std::map<spTcpConnection, spTimer> timerList_;  // 
     int workThreadNum_;
     int loopThreadNum_;
     TcpServer tcpserver_;       // 基础网络服务TcpServer
     ThreadPool *threadpool_;    // 线程池
-    void HandleNewConnection(spTcpConnection &sptcpconn); // HttpServer模式处理新连接
     void HandleMessage(spTcpConnection &sptcpconn);       // HttpServer模式处理收到的请求
     void HandleSendComplete(spTcpConnection &sptcpconn);  // HttpServer模式数据发送客户端完毕
     void HandleClose(spTcpConnection &sptcpconn);         // HttpServer模式处理连接断开
@@ -86,20 +86,20 @@ private:
 };
 
 HttpServer::HttpServer(EventLoop *loop, const int port, const int loopThreadNum, const int workThreadNum)
-    :   loopThreadNum_(loopThreadNum),
-        workThreadNum_(workThreadNum),
-        tcpserver_(loop, port, loopThreadNum)
+    : serviceName_("HttpService"),
+      loopThreadNum_(loopThreadNum),
+      workThreadNum_(workThreadNum),
+      tcpserver_(loop, port, loopThreadNum)
 {
     if(workThreadNum_)
     {
         threadpool_ = new ThreadPool(workThreadNum_);
     }
     // 基于TcpServer设置HttpServer服务函数，在TcpServer内触发调用HttpServer的成员函数，类似于信号槽机制
-    tcpserver_.SetNewConnCallback(std::bind(&HttpServer::HandleNewConnection, this, std::placeholders::_1));
-    tcpserver_.SetMessageCallback(std::bind(&HttpServer::HandleMessage, this, std::placeholders::_1));
-    tcpserver_.SetSendCompleteCallback(std::bind(&HttpServer::HandleSendComplete, this, std::placeholders::_1));
-    tcpserver_.SetCloseCallback(std::bind(&HttpServer::HandleClose, this, std::placeholders::_1));
-    tcpserver_.SetErrorCallback(std::bind(&HttpServer::HandleError, this, std::placeholders::_1));
+    tcpserver_.RegisterHandler(serviceName_, TcpServer::ReadMessageHandler, std::bind(&HttpServer::HandleMessage, this, std::placeholders::_1));
+    tcpserver_.RegisterHandler(serviceName_, TcpServer::SendOverHandler, std::bind(&HttpServer::HandleSendComplete, this, std::placeholders::_1));
+    tcpserver_.RegisterHandler(serviceName_, TcpServer::CloseConnHandler, std::bind(&HttpServer::HandleClose, this, std::placeholders::_1));
+    tcpserver_.RegisterHandler(serviceName_, TcpServer::ErrorConnHandler, std::bind(&HttpServer::HandleError, this, std::placeholders::_1));
     threadpool_->Start();
     TimerManager::GetTimerManagerInstance()->Start();
 }
@@ -110,17 +110,6 @@ HttpServer::~HttpServer()
     {
         delete threadpool_;
     }
-}
-
-/*
- * HttpServer模式处理新连接
- * 创建新连接对应的HttpSession、Timer
- * 并添加到httpSessionnList_、timerList_容器内存储
- * 
- */
-void HttpServer::HandleNewConnection(spTcpConnection &sptcpconn)
-{
-    sptcpconn->StartTimer();
 }
 
 /*
@@ -140,6 +129,7 @@ void HttpServer::HandleMessage(spTcpConnection &sptcpconn)
             return;
         }
         sptcpconn->SetAsyncProcessing(true);
+        // 线程池在此添加任务并唤醒一工作线程执行之
         threadpool_->AddTask([&]()
                             {
                                 HttpProcess(sptcpconn);
@@ -375,7 +365,7 @@ void HttpServer::Start()
  * 获取文件大小	
  * 
  */
-int getFileSize(char* file_name)
+int HttpServer::getFileSize(char* file_name)
 {
 	FILE *fp=fopen(file_name,"r");
 	if(!fp)
@@ -385,3 +375,4 @@ int getFileSize(char* file_name)
 	fclose(fp);
 	return size;
 }
+

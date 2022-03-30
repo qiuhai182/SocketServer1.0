@@ -35,7 +35,7 @@ public:
     void UpdateChannelToPoller(Channel *pchannel);  // Poller更改Channel对应连接事件信息
     void Quit();    // 停止运行EventLoop事件循环
     std::thread::id GetThreadId() const;    // 获取EventLoop所在线程ID
-    void AddTask(Functor functor);  // 添加任务到事件列表functorList_，唤醒工作线程
+    void AddTask(Functor functor);          // 添加任务到事件列表functorList_，唤醒工作线程
     void WakeUp();      // 唤醒工作线程
     void HandleRead();  // 唤醒线程的读取数据函数
     void HandleError(); // 唤醒线程的错误处理函数
@@ -181,16 +181,12 @@ void EventLoop::WakeUp()
 
 /*
  * 执行functorList_里的所有任务函数
+ * 此函数在loop所在线程执行任务
+ * 若当前loop线程是子线程，则类似于多线程任务函数
  * 
  */
 void EventLoop::ExecuteTask()
 {
-    //  std::lock_guard <std::mutex> lock(mutex_);
-    //  for(Functor &functor : functorList_)
-    //  {
-    //      functor();// 在加锁后执行任务，调用sendinloop，再调用close，执行添加任务，这样functorList_就会修改
-    //  }
-    //  functorList_.clear();
     // 拷贝任务列表并使任务列表置空
     std::vector<Functor> functorlists;
     {
