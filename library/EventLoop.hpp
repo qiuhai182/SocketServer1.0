@@ -1,12 +1,13 @@
 
 // 事件监听并处理主逻辑：
-//  负责循环执行poll函数监听客户端连接
+//  创建Poller实例poller_并循环执行poll函数监听客户端连接
+//  每一次循环将任务列表functorList_里的任务全部执行
 //  可以只有一个EventLoop工作
 //  也可以一个主要EventLoop，控制多个位于事件池子线程的EventLoop
 //  事件池线程池属于TcpServer控管，不同于工作线程池
 //  事件池多线程时，子线程轮询提供EventLoop指针用于添加监听新连接
 //  只有一个时，主线程循环调用loop监听epoll直至结束
-//  多个线程时，子线程循环调用loop直至子线程结束，主线程虽也循环调用loop却不监听任何连接
+//  多个线程时，子线程循环调用loop直至子线程结束，主线程虽也循环调用loop专用于监听TceServer的Channel
 
 #pragma once
 
@@ -216,7 +217,7 @@ void EventLoop::loop()
         poller_.poll(activeChannelList_);
         for (Channel *pchannel : activeChannelList_)
         {
-            std::cout << "输出测试：EventLoop处理新连接, 连接sockfd：" << pchannel->GetFd() << std::endl;
+            std::cout << "输出测试：EventLoop处理新请求事件, 连接sockfd：" << pchannel->GetFd() << std::endl;
             pchannel->HandleEvent();
         }
         activeChannelList_.clear();

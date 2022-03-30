@@ -76,7 +76,7 @@ TcpServer::TcpServer(EventLoop *loop, const int port, const int threadnum)
     tcpServerSocket_.BindAddress(port);
     tcpServerSocket_.Listen();
     tcpServerSocket_.SetNonblocking();
-    tcpServerChannel_.SetFd(tcpServerSocket_.fd());
+    tcpServerChannel_.SetFd(tcpServerSocket_.fd()); // TcpServer服务Channel绑定服务套接字tcpServerSocket_
     tcpServerChannel_.SetReadHandle(std::bind(&TcpServer::OnNewConnection, this));
     tcpServerChannel_.SetErrorHandle(std::bind(&TcpServer::OnConnectionError, this));
 }
@@ -94,6 +94,7 @@ void TcpServer::Start()
 {
     eventLoopThreadPool.Start();    // 创建所需的所有事件池子线程实例
     tcpServerChannel_.SetEvents(EPOLLIN | EPOLLET);     // 设置当前连接的监听事件
+    std::cout << "输出测试：TcpServer服务套接字添加到MainEventLoop的epoll内进行监听，tcpServerSockfd：" << tcpServerSocket_.fd() << std::endl;
     mainLoop_->AddChannelToPoller(&tcpServerChannel_);  // 主事件池添加当前Channel为监听对象
 }
 
@@ -165,9 +166,9 @@ void TcpServer::OnNewConnection()
     while ((clientfd = tcpServerSocket_.Accept(clientaddr)) > 0)
     {
         // 新连接进入处理
-        std::cout << "输出测试： TceServer->TcpServerChannel handle new connection from IP:" << inet_ntoa(clientaddr.sin_addr)
+        std::cout << "输出测试：TceServer接受来自" << inet_ntoa(clientaddr.sin_addr)
                   << ":" << ntohs(clientaddr.sin_port)
-                  << " 连接socket：" << clientfd << std::endl;
+                  << " 的新连接，sockfd：" << clientfd << std::endl;
         if (++connCount_ >= MAXCONNECTION)
         {
             // TODO 连接超量 connCount_需要-1 线程安全？

@@ -783,7 +783,7 @@ int TcpConnection::recvn(int fd, std::string &recvMsg)
             recvMsg.append(buffer, nbyte);
             if (nbyte < BUFSIZE)
             {
-                std::cout << std::endl << "接收到请求内容：" << std::endl << recvMsg << std::endl;
+                std::cout << std::endl << "接收到请求内容：" << std::endl << recvMsg << std::endl << std::endl;
                return recvMsg.length(); // 读优化，减小一次读调用，因为一次调用耗时10+us
             }
             else

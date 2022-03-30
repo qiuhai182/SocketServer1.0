@@ -86,6 +86,7 @@ void Poller::RemoveChannel(Channel *pchannel)
         std::lock_guard<std::mutex> lock(mutex_);
         channelMap_.erase(fd);
     }
+    // epoll添加客户端连接监听
     if (epoll_ctl(pollFd_, EPOLL_CTL_DEL, fd, &ev) == -1)
     {
         perror("epoll del error");
@@ -126,7 +127,7 @@ void Poller::poll(ChannelList &activeChannelList)
         perror("epoll wait error");
     }
     if(nfds)
-        std::cout << "输出测试：Poller监听到" << nfds << "个已连接客户端的事件待处理" << std::endl;
+        std::cout << std::endl << "输出测试：Poller监听到" << nfds << "个已连接客户端的事件待处理" << std::endl;
     // 遍历获取每个网络请求事件
     for (int i = 0; i < nfds; ++i)
     {
@@ -146,7 +147,7 @@ void Poller::poll(ChannelList &activeChannelList)
         }
         else
         {
-            std::cout << "Poller未找到该连接的Channel实例(not find channel)!" << std::endl;
+            std::cout << "Poller未找到该连接的Channel实例，连接socketfd：" << fd << std::endl;
         }
     }
     // epoll事件列表满，翻倍扩大eventList_预分配容量
