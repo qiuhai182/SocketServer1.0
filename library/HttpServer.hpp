@@ -45,40 +45,38 @@
 
 #pragma once
 
-#include <string>
-#include <mutex>
-#include <map>
 #include <iostream>
-#include <functional>
+#include <map>
+#include <mutex>
+#include <string>
 #include <memory>
+#include <functional>
+#include "Timer.hpp"
 #include "TcpServer.hpp"
 #include "EventLoop.hpp"
-#include "TimerManager.hpp"
-#include "TcpConnection.hpp"
 #include "ThreadPool.hpp"
+#include "TcpConnection.hpp"
 
 
 class HttpServer
 {
 public:
-    typedef std::shared_ptr<TcpConnection> spTcpConnection;
-    typedef std::shared_ptr<Timer> spTimer;
     HttpServer(EventLoop *loop, const int workThreadNum = 2, ThreadPool *threadPool = NULL, const int loopThreadNum = 0, const int port = 80, TcpServer *shareTcpServer = NULL);
     ~HttpServer();
-    int getFileSize(char* file_name);   // 获取文件大小
-    void HttpProcess(spTcpConnection &sptcpconn);   // 处理请求并响应
-    void HttpError(spTcpConnection &sptcpconn, const int err_num, const std::string &short_msg);
-    void Start();   // tcpServer创建所需的事件池子线程并启动，添加tcp服务Channel实例为监听对象
 
 private:
+    typedef std::shared_ptr<TcpConnection> spTcpConnection;
     std::string serviceName_;
     std::mutex mutex_;
-    std::map<spTcpConnection, spTimer> timerList_;
     int workThreadNum_;
     int loopThreadNum_;
     int tcpServerPort_;         // tcpServer的EPOLL的服务端口
     TcpServer *tcpserver_;      // 基础网络服务TcpServer
     ThreadPool *threadpool_;    // 线程池
+    int getFileSize(char* file_name);               // 获取文件大小
+    void HttpProcess(spTcpConnection &sptcpconn);   // 处理请求并响应
+    // 处理错误http请求，返回错误描述
+    void HttpError(spTcpConnection &sptcpconn, const int err_num, const std::string &short_msg);
     void HandleMessage(spTcpConnection &sptcpconn);       // HttpServer模式处理收到的请求
     void HandleSendComplete(spTcpConnection &sptcpconn);  // HttpServer模式数据处理发送客户端完毕
     void HandleClose(spTcpConnection &sptcpconn);         // HttpServer模式处理连接断开
@@ -99,8 +97,7 @@ HttpServer::HttpServer(EventLoop *loop, const int workThreadNum, ThreadPool *thr
     tcpserver_->RegisterHandler(serviceName_, TcpServer::SendOverHandler, std::bind(&HttpServer::HandleSendComplete, this, std::placeholders::_1));
     tcpserver_->RegisterHandler(serviceName_, TcpServer::CloseConnHandler, std::bind(&HttpServer::HandleClose, this, std::placeholders::_1));
     tcpserver_->RegisterHandler(serviceName_, TcpServer::ErrorConnHandler, std::bind(&HttpServer::HandleError, this, std::placeholders::_1));
-    threadpool_->Start();
-    TimerManager::GetTimerManagerInstance()->Start();
+    if(tcpServerPort_) threadpool_->Start();
 }
 
 HttpServer::~HttpServer()
@@ -123,14 +120,14 @@ void HttpServer::HandleMessage(spTcpConnection &sptcpconn)
 {
     // 修改定时器参数
     sptcpconn->GetTimer()->Adjust(5000, Timer::TimerType::TIMER_ONCE, std::bind(&TcpConnection::Shutdown, sptcpconn));
+    if (false == sptcpconn->GetReqHealthy())
+    {
+        HttpError(sptcpconn, 400, "Bad request");
+        return;
+    }
     if (threadpool_->GetThreadNum() > 0)
     {
-        // 已开启线程池，线程池taskQueue_添加任务
-        if (false == sptcpconn->GetReqHealthy())
-        {
-            HttpError(sptcpconn, 400, "Bad request");
-            return;
-        }
+        // 已开启线程池，设置异步处理标志
         sptcpconn->SetAsyncProcessing(true);
         // 线程池在此添加任务并唤醒一工作线程执行之
         threadpool_->AddTask([&]()
@@ -138,49 +135,19 @@ void HttpServer::HandleMessage(spTcpConnection &sptcpconn)
                                 HttpProcess(sptcpconn);
                                 if (!sptcpconn->WillKeepAlive())
                                 {
-                                    // 短连接，关闭连接
-                                    // sptcpconn->HandleClose();
+                                    sptcpconn->HandleClose();
                                 }
                             });
     }
     else
     {
         // 没有开启线程池
-        if (false == sptcpconn->GetReqHealthy())
-        {
-            HttpError(sptcpconn, 400, "Bad request");
-            return;
-        }
         HttpProcess(sptcpconn);
         if (!sptcpconn->WillKeepAlive())
         {
-            // sptcpconn->HandleClose();
+            sptcpconn->HandleClose();
         }
     }
-}
-
-/*
- * HttpServer模式数据发送客户端完毕
- * 
- */
-void HttpServer::HandleSendComplete(spTcpConnection &sptcpconn)
-{
-}
-
-/*
- * HttpServer模式处理连接断开
- * 
- */
-void HttpServer::HandleClose(spTcpConnection &sptcpconn)
-{
-}
-
-/*
- * HttpServer模式处理连接出错
- * 
- */
-void HttpServer::HandleError(spTcpConnection &sptcpconn)
-{
 }
 
 /*
@@ -190,12 +157,11 @@ void HttpServer::HandleError(spTcpConnection &sptcpconn)
 void HttpServer::HttpProcess(spTcpConnection &sptcpconn)
 {
     HttpRequestContext &httprequestcontext = sptcpconn->GetReq();
-    std::string &responsecontext = sptcpconn->GetBufferOut();
-    std::string responsebody;
-    std::string errormsg;
-    std::string path;
-    std::string querystring;
-    std::string filetype("text/html"); // 默认资源文件类型
+    std::string &responsecontext = sptcpconn->GetBufferOut();   // 存储响应头+响应内容
+    std::string responsebody;           // 暂存响应内容
+    std::string path;                   // 请求的资源url
+    std::string querystring;            // 请求url的'?'后的信息
+    std::string filetype("text/html");  // 默认资源文件类型
     if ("GET" == httprequestcontext.method)
     {
         ;
@@ -207,7 +173,7 @@ void HttpServer::HttpProcess(spTcpConnection &sptcpconn)
     else
     {
         // 对其他方法不支持
-        errormsg = "不支持方法：" + httprequestcontext.method + " (Method Not Implemented)";
+        std::string errormsg = "不支持方法：" + httprequestcontext.method + " (Method Not Implemented)";
         HttpError(sptcpconn, 501, errormsg.data());
         return;
     }
@@ -355,11 +321,26 @@ void HttpServer::HttpError(spTcpConnection &sptcpconn, const int err_num, const 
 }
 
 /*
- * tcpServer创建所需的事件池监听子线程并启动
- * 添加tcpServer的Channel实例为监听对象
+ * HttpServer模式数据发送客户端完毕
  * 
  */
-void HttpServer::Start()
+void HttpServer::HandleSendComplete(spTcpConnection &sptcpconn)
+{
+}
+
+/*
+ * HttpServer模式处理连接断开
+ * 
+ */
+void HttpServer::HandleClose(spTcpConnection &sptcpconn)
+{
+}
+
+/*
+ * HttpServer模式处理连接出错
+ * 
+ */
+void HttpServer::HandleError(spTcpConnection &sptcpconn)
 {
 }
 

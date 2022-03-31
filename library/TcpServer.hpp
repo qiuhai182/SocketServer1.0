@@ -120,7 +120,13 @@ void TcpServer::BindDynamicHandler(spTcpConnection &sptcpconnection)
         serviceName = url.substr(1, nextFind);
         if(serviceHandlers_.end() == serviceHandlers_.find(serviceName))
         {
+            // 请求的url无法解析为"/服务名/函数名"的格式，默认为网站式请求
             serviceName = "HttpService";
+            if(serviceHandlers_.end() == serviceHandlers_.find(serviceName))
+            {
+                // TcpServer未注册HttpServer的服务处理函数
+                return;
+            }
         }
         else
         {
@@ -136,12 +142,19 @@ void TcpServer::BindDynamicHandler(spTcpConnection &sptcpconnection)
     }
     else
     {
+        // 请求的url无法解析为"/服务名/函数名"的格式，默认为网站式请求
         serviceName = "HttpService";
+        if(serviceHandlers_.end() == serviceHandlers_.find(serviceName))
+        {
+            // TcpServer未注册HttpServer的服务处理函数
+            return;
+        }
     }
     sptcpconnection->SetMessaeCallback(serviceHandlers_[serviceName][TcpServer::ReadMessageHandler]);
     sptcpconnection->SetSendCompleteCallback(serviceHandlers_[serviceName][TcpServer::SendOverHandler]);
     sptcpconnection->SetCloseCallback(serviceHandlers_[serviceName][TcpServer::CloseConnHandler]);
     sptcpconnection->SetErrorCallback(serviceHandlers_[serviceName][TcpServer::ErrorConnHandler]);
+    sptcpconnection->SetBindedHandler(true);
 }
 
 /*

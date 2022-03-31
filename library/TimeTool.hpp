@@ -1,7 +1,7 @@
 #pragma once
 
-#ifndef _TIMES_H_
-#define _TIMES_H_
+#ifndef _TIMETOOL_H_
+#define _TIMETOLL_H_
 
 #include <fstream>
 #include <iostream>

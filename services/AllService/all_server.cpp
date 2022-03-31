@@ -27,11 +27,11 @@ int main(int argc, char *argv[])
     EventLoop loop;     // 多服务共享EventLoop
     TcpServer tcpServer(&loop, port, iothreadnum);  // 多服务共享基于EPOLL的TcpServer
     ThreadPool threadPool(workerthreadnum);         // 多服务共享线程池
+    threadPool.Start();
     // 以下多个服务构造时使用共享的tcpServer和threadPool，则其相应构造参数可以置为0
     // 这样做的好处是析构时每个服务内部可根据构造参数判断是否需要delete对象指针：tcpServer和threadPool
     HttpServer httpServer(&loop, 0, &threadPool, 0, 0, &tcpServer);
     ResourceServer resourceServer(&loop, 0, &threadPool, 0, 0, &tcpServer);
-    httpServer.Start();
     try
     {
         loop.loop();
@@ -40,11 +40,6 @@ int main(int argc, char *argv[])
     {
         std::cerr << "bad_alloc caught in ThreadPool::ThreadFunc task: " << ba.what() << '\n';
     }
-
-    // EventLoop loop;
-    // EchoServer echoServer(&loop, port, iothreadnum);
-    // echoServer.Start();
-    // loop.loop();
 
     return 0;
 }

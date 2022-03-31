@@ -105,11 +105,11 @@ void ThreadPool::Stop()
     condition_.notify_all();
     for (auto i : threadList_)
     {
-        // 线程分离，异步线程
         std::cout << "启动并分离线程：" << i << std::endl;
+        // 线程分离，异步线程
         i->detach();
-        // i->join();
     }
+    // 子线程分离后不再管理子线程句柄，由started_控制子线程停止
     threadList_.clear();
 }
 

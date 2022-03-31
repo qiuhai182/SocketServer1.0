@@ -6,9 +6,6 @@
 
 #include <functional>
 #include <sys/time.h>
-// #include "TimerManager.hpp"
-
-class TimerManager;
 
 class Timer
 {
@@ -58,7 +55,6 @@ Timer::~Timer()
  */
 void Timer::Start()
 {
-    // TimerManager::GetTimerManagerInstance()->AddTimer(this);
 }
 
 /*
@@ -67,7 +63,6 @@ void Timer::Start()
  */
 void Timer::Stop()
 {
-    // TimerManager::GetTimerManagerInstance()->RemoveTimer(this);
 }
 
 /*
@@ -80,5 +75,4 @@ void Timer::Adjust(int timeOut, Timer::TimerType timerType, const CallBack &time
     timeOut_ = timeOut;
     timerType_ = timerType;
     timerCallBack_ = timerCallBack;
-    // TimerManager::GetTimerManagerInstance()->AdjustTimer(this);
 }

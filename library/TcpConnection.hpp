@@ -62,17 +62,17 @@ public:
     int sendn(int fd, std::string &sendMsg);    // 发送数据到客户端fd
     void Send(const std::string &s);            // 发送信息函数，指定EventLoop执行
     void Send(const char *s, int length = 0);   // 发送信息函数，指定EventLoop执行
-    void SendBufferOut();                       // 发送信息函数，指定EventLoop执行
+    void SendBufferOut();                       // 发送信息函数，仅发送bufferOut_存储的内容，指定EventLoop执行
     bool ParseHttpRequest();                    // 解析http请求信息
     bool GetReqHealthy();                       // 获取连接请求解析结果状态
     void SendInLoop();                          // 发送信息函数，由EventLoop执行
     void AddChannelToLoop();                    // EventLoop添加监听Channel
     void Shutdown();                            // 关闭当前连接，指定EventLoop执行
     void ShutdownInLoop();                      // 关闭当前连接，由EventLoop执行
-    void HandleRead();                          // 接收客户端发送的数据，调用绑定的messageCallback_函数
-    void HandleWrite();                         // 向客户端发送数据
-    void HandleError();                         // 处理连接错误
-    void HandleClose();                         // 处理客户端连接关闭
+    void HandleRead();                          // 由TcpConnection的Channel调用，接收客户端发送的数据，再调用绑定的messageCallback_函数
+    void HandleWrite();                         // 由TcpConnection的Channel调用，向客户端发送数据，再调用绑定的sendcompleteCallback_函数
+    void HandleError();                         // 由TcpConnection的Channel调用，处理连接错误，再调用绑定的errorCallback_函数与connectioncleanup_函数
+    void HandleClose();                         // 由TcpConnection的Channel调用，处理客户端连接关闭，再调用绑定的closeCallback_函数与connectioncleanup_函数
     std::string &GetBufferIn();                 // 获取接收缓冲区的指针
     std::string &GetBufferOut();                // 获取发送缓冲区的指针
     int GetReceiveLength();                     // 获取接收到的数据的长度
@@ -88,11 +88,15 @@ public:
     Callback GetCloseCallback();                // 设置关闭处理函数
     Callback GetErrorCallback();                // 设置出错处理函数
     Callback GetConnectionCleanUp();            // 设置连接清理函数
+    // 处理错误http请求，返回错误描述
+    void HttpError(const int err_num, const std::string &short_msg);
     void SetMessaeCallback(const Callback &cb); // 设置连接处理函数
     void SetSendCompleteCallback(const Callback &cb);   // 设置数据发送完毕处理函数
     void SetCloseCallback(const Callback &cb);          // 设置关闭处理函数
     void SetErrorCallback(const Callback &cb);          // 设置出错处理函数
-    void SetConnectionCleanUp(const Callback &cb);      // 设置连接清空函数
+    void SetConnectionCleanUp(const Callback &cb);      // 设置连接清空函数，此函数独属于TcpServer
+    void SetBindedHandler(bool BindedHandler);          // 设置处理函数绑定状态
+    bool GetBindedHandler(bool BindedHandler);          // 获取处理函数绑定状态
     int SetSendMessage(const std::string &newMsg);      // 重置bufferOut_的内容
     int AddSendMessage(const std::string &newMsg);      // 添加新数据到bufferOut_
     void SetDynamicHandler(const Callback &cb);         // 设置向TcpServer申请动态绑定函数的函数
@@ -113,12 +117,13 @@ private:
     std::string bufferOut_;         // 发送数据缓冲区
     HttpRequestContext httpRequestContext_;     // 请求解析结构
     HttpResponseContext httpResponseContext_;   // 响应结构
+    bool BindedHandler_;            // 处理函数绑定标志
     Callback BindDynamicHandler_;   // 向TcpServer申请动态绑定函数
     Callback messageCallback_;      // 请求响应函数
     Callback sendcompleteCallback_; // 发送完毕处理函数
     Callback closeCallback_;        // 连接关闭处理函数
     Callback errorCallback_;        // 错误处理函数
-    Callback connectioncleanup_;    // 连接清理函数
+    Callback connectioncleanup_;    // 连接清理函数，此函数独属于TcpServer
 
 };
 
@@ -133,7 +138,8 @@ TcpConnection::TcpConnection(EventLoop *loop, int fd, const struct sockaddr_in &
       bufferIn_(),
       bufferOut_(),
       keepalive_(true),
-      reqHealthy_(false)
+      reqHealthy_(false),
+      BindedHandler_(false)
 {
     // 基于Channel设置TcpConnection的服务函数，在Channel内触发调用TcpConnection的成员函数，类似于信号槽机制
     spChannel_->SetFd(fd_);
@@ -236,8 +242,8 @@ void TcpConnection::SendInLoop()
             spChannel_->SetEvents(events & (~EPOLLOUT));
             spTcpConnection sptcpconn = shared_from_this();
             sendcompleteCallback_(sptcpconn);
-            if (halfClose_)
-                HandleClose();
+            // 已设置半关闭标志，连接即将关闭
+            if(halfClose_) HandleClose();
         }
     }
     else if (result < 0)
@@ -281,7 +287,6 @@ void TcpConnection::ShutdownInLoop()
     }
     spTcpConnection sptcpconn = shared_from_this();
     closeCallback_(sptcpconn);
-    sptcpconn = shared_from_this();
     loop_->AddTask(std::bind(connectioncleanup_, sptcpconn));
     disConnected_ = true;
 }
@@ -297,12 +302,18 @@ void TcpConnection::HandleRead()
     // 在此向TcpServer请求函数绑定
     spTcpConnection sptcpconn = shared_from_this();
     BindDynamicHandler_(sptcpconn);
+    if(!BindedHandler_)
+    {
+        HandleError();
+    }
     if (result > 0)
     {
         reqHealthy_ = ParseHttpRequest();
-        timer_ = new Timer(5000, Timer::TimerType::TIMER_ONCE, std::bind(&TcpConnection::Shutdown, shared_from_this()));
+        if(!timer_) 
+            timer_ = new Timer(5000, Timer::TimerType::TIMER_ONCE, std::bind(&TcpConnection::Shutdown, shared_from_this()));
+        else
+            timer_->Adjust(5000, Timer::TimerType::TIMER_ONCE, std::bind(&TcpConnection::Shutdown, shared_from_this()));
         // 将读取到的缓冲区数据bufferIn_回调回动态绑定的上层处理函数messageCallback_
-        sptcpconn = shared_from_this();
         timer_->Start();
         messageCallback_(sptcpconn);
     }
@@ -339,8 +350,7 @@ void TcpConnection::HandleWrite()
             spTcpConnection sptcpconn = shared_from_this();
             sendcompleteCallback_(sptcpconn);
             // 发送完毕，如果是半关闭状态，则可以close了
-            if (halfClose_)
-                HandleClose();
+            if(halfClose_) HandleClose();
         }
     }
     else if (result < 0)
@@ -359,16 +369,17 @@ void TcpConnection::HandleWrite()
  */
 void TcpConnection::HandleError()
 {
+    if(!BindedHandler_)
+    {
+        // 未绑定处理函数
+        HttpError(400, "请求报文语法有误，服务器无法识别，或是目标服务器尚未上线网站服务");
+    }
     if (disConnected_)
     {
         return;
     }
     spTcpConnection sptcpconn = shared_from_this();
     errorCallback_(sptcpconn);
-    // loop_->RemoveChannelToPoller(pchannel_);
-    // 连接标记为清理
-    // task添加
-    sptcpconn = shared_from_this();
     loop_->AddTask(std::bind(connectioncleanup_, sptcpconn)); // 自己不能清理自己，交给loop执行，Tcpserver清理
     disConnected_ = true;
 }
@@ -380,21 +391,15 @@ void TcpConnection::HandleError()
  */
 void TcpConnection::HandleClose()
 {
-    // 移除事件
-    // loop_->RemoveChannelToPoller(pchannel_);
-    // 连接标记为清理
-    // task添加
-    // loop_->AddTask(connectioncleanup_);
-    // closeCallback_(this);
     if (disConnected_)
     {
         return;
     }
     if (bufferOut_.size() > 0 || bufferIn_.length() > 0 || asyncProcessing_)
     {
-        // 如果还有数据待发送，则先发完,设置半关闭标志位
+        // 如果还有数据待发送或接收，则设置半关闭标志位
         halfClose_ = true;
-        // 还有数据刚刚才收到，但同时又收到FIN
+        // 还有数据刚刚才收到，但同时又收到FIN，继续接收数据
         if (bufferIn_.length() > 0)
         {
             spTcpConnection sptcpconn = shared_from_this();
@@ -404,10 +409,9 @@ void TcpConnection::HandleClose()
     else
     {
         spTcpConnection sptcpconn = shared_from_this();
-        loop_->AddTask(std::bind(connectioncleanup_, sptcpconn));
-        sptcpconn = shared_from_this();
         closeCallback_(sptcpconn);
         disConnected_ = true;
+        loop_->AddTask(std::bind(connectioncleanup_, sptcpconn));
     }
 }
 
@@ -457,12 +461,30 @@ void TcpConnection::SetErrorCallback(const Callback &cb)
 }
 
 /*
- * 设置连接清空函数
+ * 设置连接清空函数，此函数独属于TcpServer
  * 
  */
 void TcpConnection::SetConnectionCleanUp(const Callback &cb)
 {
     connectioncleanup_ = cb;
+}
+
+/*
+ * 设置处理函数绑定状态
+ * 
+ */
+void TcpConnection::SetBindedHandler(bool BindedHandler)
+{
+    BindedHandler_ = BindedHandler;
+}
+
+/*
+ * 获取处理函数绑定状态
+ * 
+ */
+bool TcpConnection::GetBindedHandler(bool BindedHandler)
+{
+    return BindedHandler_;
 }
 
 /*
@@ -765,6 +787,37 @@ bool TcpConnection::ParseHttpRequest()
 //     parseresult = true;
 //     return parseresult;
 // }
+
+/*
+ * 处理错误http请求，返回错误描述
+ * 
+ */
+void TcpConnection::HttpError(const int err_num, const std::string &short_msg)
+{
+    bufferOut_.clear();
+    if (httpRequestContext_.version.empty())
+    {
+        bufferOut_ += "HTTP/1.1 " + std::to_string(err_num) + " " + short_msg + "\r\n";
+    }
+    else
+    {
+        bufferOut_ += httpRequestContext_.version + " " + std::to_string(err_num) + " " + short_msg + "\r\n";
+    }
+    bufferOut_ += "Server: Qiu Hai's NetServer/0.1\r\n";
+    bufferOut_ += "Content-Type: text/html\r\n";
+    bufferOut_ += "Connection: Keep-Alive\r\n";
+    std::string responsebody;
+    responsebody += "<html><title>出错了</title>";
+    responsebody += "<head><meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\"></head>";
+    responsebody += "<style>body{background-color:#f;font-size:14px;}h1{font-size:60px;color:#eeetext-align:center;padding-top:30px;font-weight:normal;}</style>";
+    responsebody += "<body bgcolor=\"ffffff\"><h1>";
+    responsebody += std::to_string(err_num) + " " + short_msg;
+    responsebody += "</h1><hr><em> Qiu Hai's NetServer</em>\n</body></html>";
+    bufferOut_ += "Content-Length: " + std::to_string(responsebody.size()) + "\r\n";
+    bufferOut_ += "\r\n";
+    bufferOut_.append(responsebody, 0, responsebody.length());
+    SendBufferOut();
+}
 
 /*
  * 读取客户端数据
