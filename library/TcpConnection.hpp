@@ -90,13 +90,15 @@ public:
     Callback GetConnectionCleanUp();            // 设置连接清理函数
     // 处理错误http请求，返回错误描述
     void HttpError(const int err_num, const std::string &short_msg);
-    void SetMessaeCallback(const Callback &cb); // 设置连接处理函数
+    void SetMessaeCallback(const Callback &cb);         // 设置连接处理函数
     void SetSendCompleteCallback(const Callback &cb);   // 设置数据发送完毕处理函数
     void SetCloseCallback(const Callback &cb);          // 设置关闭处理函数
     void SetErrorCallback(const Callback &cb);          // 设置出错处理函数
     void SetConnectionCleanUp(const Callback &cb);      // 设置连接清空函数，此函数独属于TcpServer
-    void SetBindedHandler(bool BindedHandler);          // 设置处理函数绑定状态
-    bool GetBindedHandler(bool BindedHandler);          // 获取处理函数绑定状态
+    void SetReqHandler(const Callback &cb);             // 设置本次连接事件请求的处理函数
+    const Callback &GetReqHandler();                    // 获取本次连接事件请求的处理函数
+    void SetBindedHandler(const bool BindedHandler);    // 设置处理函数绑定状态
+    bool GetBindedHandler(const bool BindedHandler);    // 获取处理函数绑定状态
     int SetSendMessage(const std::string &newMsg);      // 重置bufferOut_的内容
     int AddSendMessage(const std::string &newMsg);      // 添加新数据到bufferOut_
     void SetDynamicHandler(const Callback &cb);         // 设置向TcpServer申请动态绑定函数的函数
@@ -124,6 +126,7 @@ private:
     Callback closeCallback_;        // 连接关闭处理函数
     Callback errorCallback_;        // 错误处理函数
     Callback connectioncleanup_;    // 连接清理函数，此函数独属于TcpServer
+    Callback reqHandler_;           // 本次连接事件请求的处理函数
 
 };
 
@@ -286,7 +289,8 @@ void TcpConnection::ShutdownInLoop()
         return;
     }
     spTcpConnection sptcpconn = shared_from_this();
-    closeCallback_(sptcpconn);
+    if(BindedHandler_)
+        closeCallback_(sptcpconn);
     loop_->AddTask(std::bind(connectioncleanup_, sptcpconn));
     disConnected_ = true;
 }
@@ -306,7 +310,7 @@ void TcpConnection::HandleRead()
     {
         HandleError();
     }
-    if (result > 0)
+    else if (result > 0)
     {
         reqHealthy_ = ParseHttpRequest();
         if(!timer_) 
@@ -315,7 +319,9 @@ void TcpConnection::HandleRead()
             timer_->Adjust(5000, Timer::TimerType::TIMER_ONCE, std::bind(&TcpConnection::Shutdown, shared_from_this()));
         // 将读取到的缓冲区数据bufferIn_回调回动态绑定的上层处理函数messageCallback_
         timer_->Start();
+        std::cout << "输出测试：即将调用信息处理函数" << std::endl;
         messageCallback_(sptcpconn);
+        std::cout << "输出测试：调用信息处理函数完毕" << std::endl;
     }
     else if (result == 0)
     {
@@ -371,15 +377,25 @@ void TcpConnection::HandleError()
 {
     if(!BindedHandler_)
     {
-        // 未绑定处理函数
-        HttpError(400, "请求报文语法有误，服务器无法识别，或是目标服务器尚未上线网站服务");
+        std::cout << "输出测试：绑定函数失败，url=" << httpRequestContext_.url << std::endl;
+        // 未绑定处理函数或本次请求的函数绑定失败，客户端函数写错了
+        if(!httpRequestContext_.serviceName.empty())
+        {
+            HttpError(400, "所请求的服务：" + httpRequestContext_.serviceName + " 没有这样的处理函数：" + httpRequestContext_.url);
+        }
+        else
+        {
+            HttpError(400, "请求报文语法有误，服务器无法识别：" + httpRequestContext_.url);
+        }
     }
     if (disConnected_)
     {
         return;
     }
+    std::cout << "输出测试：TcpConnection错误处理，socket：" << fd_ << std::endl;
     spTcpConnection sptcpconn = shared_from_this();
-    errorCallback_(sptcpconn);
+    if(BindedHandler_)
+        errorCallback_(sptcpconn);
     loop_->AddTask(std::bind(connectioncleanup_, sptcpconn)); // 自己不能清理自己，交给loop执行，Tcpserver清理
     disConnected_ = true;
 }
@@ -397,7 +413,7 @@ void TcpConnection::HandleClose()
     }
     if (bufferOut_.size() > 0 || bufferIn_.length() > 0 || asyncProcessing_)
     {
-        // 如果还有数据待发送或接收，则设置半关闭标志位
+        // 如果还有数据待发送、接收或处于异步处理状态，则设置半关闭标志位
         halfClose_ = true;
         // 还有数据刚刚才收到，但同时又收到FIN，继续接收数据
         if (bufferIn_.length() > 0)
@@ -409,7 +425,8 @@ void TcpConnection::HandleClose()
     else
     {
         spTcpConnection sptcpconn = shared_from_this();
-        closeCallback_(sptcpconn);
+        if(BindedHandler_)
+            closeCallback_(sptcpconn);
         disConnected_ = true;
         loop_->AddTask(std::bind(connectioncleanup_, sptcpconn));
     }
@@ -470,10 +487,28 @@ void TcpConnection::SetConnectionCleanUp(const Callback &cb)
 }
 
 /*
+ * 设置本次连接事件请求的处理函数
+ * 
+ */
+void TcpConnection::SetReqHandler(const Callback &cb)
+{
+    reqHandler_ = cb;
+}
+
+/*
+ * 获取本次连接事件请求的处理函数
+ * 
+ */
+const TcpConnection::Callback &TcpConnection::GetReqHandler()
+{
+    return reqHandler_;
+}
+
+/*
  * 设置处理函数绑定状态
  * 
  */
-void TcpConnection::SetBindedHandler(bool BindedHandler)
+void TcpConnection::SetBindedHandler(const bool BindedHandler)
 {
     BindedHandler_ = BindedHandler;
 }
@@ -482,7 +517,7 @@ void TcpConnection::SetBindedHandler(bool BindedHandler)
  * 获取处理函数绑定状态
  * 
  */
-bool TcpConnection::GetBindedHandler(bool BindedHandler)
+bool TcpConnection::GetBindedHandler(const bool BindedHandler)
 {
     return BindedHandler_;
 }
@@ -676,6 +711,7 @@ bool TcpConnection::ParseHttpRequest()
     //TODO以下解析可以改成状态机，解决一次收Http报文不完整问题
     if ((next = bufferIn_.find(crlf, prev)) != std::string::npos)
     {
+        // 有至少一个"\r\n"字段
         std::string first_line(bufferIn_.substr(prev, next - prev));
         prev = next;
         std::stringstream sstream(first_line);
@@ -685,6 +721,7 @@ bool TcpConnection::ParseHttpRequest()
     }
     else
     {
+        // 没有"\r\n"字段
         std::cout << "error received message：" << bufferIn_ << std::endl;
         std::cout << "Error in httpParser: http_request_line isn't complete!" << std::endl;
         parseresult = false;
@@ -695,6 +732,7 @@ bool TcpConnection::ParseHttpRequest()
     size_t pos_crlfcrlf = 0;
     if ((pos_crlfcrlf = bufferIn_.find(crlfcrlf, prev)) != std::string::npos)
     {
+        // 有"\r\n\r\n"字段
         while (prev != pos_crlfcrlf)
         {
             next = bufferIn_.find(crlf, prev + 2);
@@ -707,6 +745,7 @@ bool TcpConnection::ParseHttpRequest()
     }
     else
     {
+        // 无"\r\n\r\n"字段
         std::cout << "Error in httpParser: http_request_header isn't complete!" << std::endl;
         parseresult = false;
         bufferIn_.clear();

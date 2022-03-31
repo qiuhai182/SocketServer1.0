@@ -80,36 +80,6 @@ ResourceServer::~ResourceServer()
  */
 void ResourceServer::HandleMessage(spTcpConnection &sptcpconn)
 {
-    // 修改定时器参数
-    sptcpconn->GetTimer()->Adjust(5000, Timer::TimerType::TIMER_ONCE, std::bind(&TcpConnection::Shutdown, sptcpconn));
-    if (false == sptcpconn->GetReqHealthy())
-    {
-        HttpError(sptcpconn, 400, "Bad request");
-        return;
-    }
-    if (threadpool_->GetThreadNum() > 0)
-    {
-        // 已开启线程池，设置异步处理标志
-        sptcpconn->SetAsyncProcessing(true);
-        // 线程池在此添加任务并唤醒一工作线程执行之
-        threadpool_->AddTask([&]()
-                            {
-                                ResourceProcess(sptcpconn);
-                                if (!sptcpconn->WillKeepAlive())
-                                {
-                                    sptcpconn->HandleClose();
-                                }
-                            });
-    }
-    else
-    {
-        // 没有开启线程池
-        ResourceProcess(sptcpconn);
-        if (!sptcpconn->WillKeepAlive())
-        {
-            sptcpconn->HandleClose();
-        }
-    }
 }
 
 /*
@@ -149,7 +119,42 @@ void ResourceServer::HttpError(spTcpConnection &sptcpconn, const int err_num, co
  */
 void ResourceServer::ResourceProcess(spTcpConnection &sptcpconn)
 {
-    ;
+    HttpRequestContext &httprequestcontext = sptcpconn->GetReq();
+    std::string &responsecontext = sptcpconn->GetBufferOut();   // 存储响应头+响应内容
+    std::string responsebody;           // 暂存响应内容
+    std::string path;                   // 请求的资源url
+    std::string querystring;            // 请求url的'?'后的信息
+    std::string filetype("text/html");  // 默认资源文件类型
+    size_t pos = httprequestcontext.url.find("?");
+    if (pos != std::string::npos)
+    {
+        // 请求链接包含?，获取'?'以前的path以及'?'以后的querystring
+        path = httprequestcontext.url.substr(0, pos);
+        querystring = httprequestcontext.url.substr(pos + 1);
+    }
+    else
+    {
+        path = httprequestcontext.url;
+    }
+    // keepalive判断处理，包含Connection字段
+    std::map<std::string, std::string>::const_iterator iter = httprequestcontext.header.find("Connection");
+    if (iter != httprequestcontext.header.end())
+    {
+        // Connection字段值为Keep-Alive则保持长连接
+        sptcpconn->SetKeepAlive(iter->second == "Keep-Alive");
+    }
+    else
+    {
+        // 不包含Keep-Alive字段，根据协议版本判断是否需要长连接
+        if (httprequestcontext.version == "HTTP/1.1")
+        {
+            sptcpconn->SetKeepAlive(true); // HTTP/1.1默认长连接
+        }
+        else
+        {
+            sptcpconn->SetKeepAlive(false); // HTTP/1.0默认短连接
+        }
+    }
 }
 
 /*

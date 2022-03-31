@@ -111,44 +111,67 @@ void TcpServer::BindDynamicHandler(spTcpConnection &sptcpconnection)
 {
     HttpRequestContext &httpRequestContext = sptcpconnection->GetReq();
     std::string url = httpRequestContext.url;
+    bool isDefaultHttpService = false;
     std::string &serviceName = httpRequestContext.serviceName;
     std::string &handlerName = httpRequestContext.handlerName;
     std::string &resourceUrl = httpRequestContext.resourceUrl;
+    serviceName.clear();
+    handlerName.clear();
+    resourceUrl.clear();
     size_t nextFind = url.find('/', 1);
     if(std::string::npos != nextFind)
     {
         serviceName = url.substr(1, nextFind);
         if(serviceHandlers_.end() == serviceHandlers_.find(serviceName))
         {
-            // 请求的url无法解析为"/服务名/函数名"的格式，默认为网站式请求
-            serviceName = "HttpService";
-            if(serviceHandlers_.end() == serviceHandlers_.find(serviceName))
-            {
-                // TcpServer未注册HttpServer的服务处理函数
-                return;
-            }
+            // 服务名解析失败，请求的url无法解析为"/服务名/函数名"的格式，默认为网站式请求
+            isDefaultHttpService = true;
         }
         else
         {
+            // 服务名解析成功
             url.erase(0, nextFind);
             nextFind = url.find('/', 1); // 可能有，也可能无
-            if(std::string::npos == nextFind)
+            if(std::string::npos != nextFind)
             {
-                nextFind = url.length();
+                handlerName = url.substr(1, nextFind);
             }
-            handlerName = url.substr(1, nextFind);
+            else
+            {
+                nextFind = 0;
+            }
             resourceUrl = url.substr(nextFind, url.size());
+            // 开始解析函数名
+            if(serviceHandlers_[serviceName].end() == serviceHandlers_[serviceName].find(handlerName))
+            {
+                // 函数名解析失败，本次连接所请求的函数未注册到serviceHandlers_
+                sptcpconnection->SetBindedHandler(false);
+                return;
+            }
+            else
+            {
+                // 函数名解析成功，绑定本次请求的处理函数
+                sptcpconnection->SetReqHandler(serviceHandlers_[serviceName][handlerName]);
+            }
         }
     }
     else
     {
         // 请求的url无法解析为"/服务名/函数名"的格式，默认为网站式请求
-        serviceName = "HttpService";
-        if(serviceHandlers_.end() == serviceHandlers_.find(serviceName))
+        isDefaultHttpService = true;
+    }
+    if(isDefaultHttpService)
+    {
+        // 服务名解析失败，使用网站式处理方法
+        if(serviceHandlers_.end() == serviceHandlers_.find("HttpService"))
         {
-            // TcpServer未注册HttpServer的服务处理函数
+            // TcpServer未注册HttpServer的任一服务处理函数
+            sptcpconnection->SetBindedHandler(false);
             return;
         }
+        // 默认使用网站资源处理方法
+        serviceName = "HttpService";
+        sptcpconnection->SetReqHandler(serviceHandlers_[serviceName]["HttpProcess"]);
     }
     sptcpconnection->SetMessaeCallback(serviceHandlers_[serviceName][TcpServer::ReadMessageHandler]);
     sptcpconnection->SetSendCompleteCallback(serviceHandlers_[serviceName][TcpServer::SendOverHandler]);

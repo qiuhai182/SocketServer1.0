@@ -31,7 +31,7 @@ int main(int argc, char *argv[])
     // 以下多个服务构造时使用共享的tcpServer和threadPool，则其相应构造参数可以置为0
     // 这样做的好处是析构时每个服务内部可根据构造参数判断是否需要delete对象指针：tcpServer和threadPool
     HttpServer httpServer(&loop, 0, &threadPool, 0, 0, &tcpServer);
-    ResourceServer resourceServer(&loop, 0, &threadPool, 0, 0, &tcpServer);
+    // ResourceServer resourceServer(&loop, 0, &threadPool, 0, 0, &tcpServer);
     try
     {
         loop.loop();

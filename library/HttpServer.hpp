@@ -97,6 +97,7 @@ HttpServer::HttpServer(EventLoop *loop, const int workThreadNum, ThreadPool *thr
     tcpserver_->RegisterHandler(serviceName_, TcpServer::SendOverHandler, std::bind(&HttpServer::HandleSendComplete, this, std::placeholders::_1));
     tcpserver_->RegisterHandler(serviceName_, TcpServer::CloseConnHandler, std::bind(&HttpServer::HandleClose, this, std::placeholders::_1));
     tcpserver_->RegisterHandler(serviceName_, TcpServer::ErrorConnHandler, std::bind(&HttpServer::HandleError, this, std::placeholders::_1));
+    tcpserver_->RegisterHandler(serviceName_, "HttpProcess", std::bind(&HttpServer::HttpProcess, this, std::placeholders::_1));
     if(tcpServerPort_) threadpool_->Start();
 }
 
@@ -132,17 +133,18 @@ void HttpServer::HandleMessage(spTcpConnection &sptcpconn)
         // 线程池在此添加任务并唤醒一工作线程执行之
         threadpool_->AddTask([&]()
                             {
-                                HttpProcess(sptcpconn);
+                                sptcpconn->GetReqHandler()(sptcpconn);
                                 if (!sptcpconn->WillKeepAlive())
                                 {
                                     sptcpconn->HandleClose();
                                 }
+                                sptcpconn->SetAsyncProcessing(false);
                             });
     }
     else
     {
         // 没有开启线程池
-        HttpProcess(sptcpconn);
+        sptcpconn->GetReqHandler()(sptcpconn);
         if (!sptcpconn->WillKeepAlive())
         {
             sptcpconn->HandleClose();
