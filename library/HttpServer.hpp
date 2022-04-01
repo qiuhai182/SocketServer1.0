@@ -119,6 +119,7 @@ HttpServer::~HttpServer()
  */
 void HttpServer::HandleMessage(spTcpConnection &sptcpconn)
 {
+    std::cout << "输出测试：HttpServer::HandleMessage " << std::endl;
     // 修改定时器参数
     sptcpconn->GetTimer()->Adjust(5000, Timer::TimerType::TIMER_ONCE, std::bind(&TcpConnection::Shutdown, sptcpconn));
     if (false == sptcpconn->GetReqHealthy())
@@ -133,22 +134,15 @@ void HttpServer::HandleMessage(spTcpConnection &sptcpconn)
         // 线程池在此添加任务并唤醒一工作线程执行之
         threadpool_->AddTask([&]()
                             {
+                                // 执行动态绑定的处理函数
                                 sptcpconn->GetReqHandler()(sptcpconn);
-                                if (!sptcpconn->WillKeepAlive())
-                                {
-                                    sptcpconn->HandleClose();
-                                }
                                 sptcpconn->SetAsyncProcessing(false);
                             });
     }
     else
     {
-        // 没有开启线程池
+        // 没有开启线程池，执行动态绑定的处理函数
         sptcpconn->GetReqHandler()(sptcpconn);
-        if (!sptcpconn->WillKeepAlive())
-        {
-            sptcpconn->HandleClose();
-        }
     }
 }
 
@@ -158,6 +152,7 @@ void HttpServer::HandleMessage(spTcpConnection &sptcpconn)
  */
 void HttpServer::HttpProcess(spTcpConnection &sptcpconn)
 {
+    std::cout << "输出测试：HttpServer::HttpProcess 开始处理一个TcpConnection连接的Http请求，连接sockfd：" << sptcpconn->fd() << std::endl;
     HttpRequestContext &httprequestcontext = sptcpconn->GetReqestBuffer();
     std::string &responsecontext = sptcpconn->GetBufferOut();   // 存储响应头+响应内容
     std::string responsebody;           // 暂存响应内容
@@ -297,6 +292,7 @@ void HttpServer::HttpProcess(spTcpConnection &sptcpconn)
  */
 void HttpServer::HttpError(spTcpConnection &sptcpconn, const int err_num, const std::string &short_msg)
 {
+    std::cout << "输出测试：HttpServer::HandleError " << std::endl;
     std::string &responsecontext = sptcpconn->GetBufferOut();
     if (sptcpconn->GetReqestBuffer().version.empty())
     {
@@ -328,6 +324,7 @@ void HttpServer::HttpError(spTcpConnection &sptcpconn, const int err_num, const 
  */
 void HttpServer::HandleSendComplete(spTcpConnection &sptcpconn)
 {
+    std::cout << "输出测试：HttpServer::HandleSendComplete " << std::endl;
 }
 
 /*
@@ -336,6 +333,7 @@ void HttpServer::HandleSendComplete(spTcpConnection &sptcpconn)
  */
 void HttpServer::HandleClose(spTcpConnection &sptcpconn)
 {
+    std::cout << "输出测试：HttpServer::HandleClose " << std::endl;
 }
 
 /*
@@ -344,6 +342,7 @@ void HttpServer::HandleClose(spTcpConnection &sptcpconn)
  */
 void HttpServer::HandleError(spTcpConnection &sptcpconn)
 {
+    std::cout << "输出测试：HttpServer::HandleError " << std::endl;
 }
 
 /*

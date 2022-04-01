@@ -55,6 +55,7 @@ Poller::~Poller()
  */
 void Poller::AddChannel(Channel *pchannel)
 {
+    std::cout << "输出测试：Poller::AddChannel " << std::endl;
     struct epoll_event ev;
     ev.events = pchannel->GetEvents();
     ev.data.ptr = pchannel;
@@ -77,6 +78,7 @@ void Poller::AddChannel(Channel *pchannel)
  */
 void Poller::RemoveChannel(Channel *pchannel)
 {
+    std::cout << "输出测试：Poller::RemoveChannel " << std::endl;
     int fd = pchannel->GetFd();
     struct epoll_event ev;
     ev.events = pchannel->GetEvents();
@@ -100,6 +102,7 @@ void Poller::RemoveChannel(Channel *pchannel)
  */
 void Poller::UpdateChannel(Channel *pchannel)
 {
+    std::cout << "输出测试：Poller::UpdateChannel " << std::endl;
     int fd = pchannel->GetFd();
     struct epoll_event ev;
     ev.events = pchannel->GetEvents();
@@ -127,7 +130,7 @@ void Poller::poll(ChannelList &activeChannelList)
         perror("epoll wait error");
     }
     if(nfds)
-        std::cout << std::endl << "输出测试：Poller监听到" << nfds << "个已连接客户端的事件待处理" << std::endl;
+        std::cout << std::endl << "输出测试：Poller::poll Poller监听到" << nfds << "个已连接客户端的事件待处理" << std::endl;
     // 遍历获取每个网络请求事件
     for (int i = 0; i < nfds; ++i)
     {
@@ -142,19 +145,19 @@ void Poller::poll(ChannelList &activeChannelList)
         // 设置连接Channel实例新连接事件
         if (iter != channelMap_.end())
         {
-            std::cout << "输出测试：Poller已找到一个已连接事件的Channel实例，连接socketfd：" << fd << std::endl;
+            std::cout << "输出测试：Poller::poll Poller已找到一个已连接事件的Channel实例，连接socketfd：" << fd << std::endl;
             pchannel->SetEvents(events);
             activeChannelList.push_back(pchannel);
         }
         else
         {
-            std::cout << "输出测试：Poller未找到该连接的Channel实例，连接socketfd：" << fd << std::endl;
+            std::cout << "输出测试：Poller::poll Poller未找到该连接的Channel实例，连接socketfd：" << fd << std::endl;
         }
     }
     // epoll事件列表满，翻倍扩大eventList_预分配容量
     if (nfds == (int)eventList_.capacity())
     {
-        std::cout << "输出测试：epoll池容量满，容量翻倍" << nfds << std::endl;
+        std::cout << "Poller::poll 输出测试：epoll池容量满，容量翻倍" << nfds << std::endl;
         eventList_.resize(nfds * 2);
     }
     eventList_.clear();

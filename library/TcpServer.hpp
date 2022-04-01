@@ -27,8 +27,6 @@
 
 #define MAXCONNECTION 20000
 
-void Setnonblocking(int fd);
-
 class TcpServer
 {
 public:
@@ -53,6 +51,7 @@ private:
     EventLoopThreadPool eventLoopThreadPool;        // 多线程事件池
     std::map<int, spTcpConnection> tcpConnList_;    // 套接字描述符->连接抽象类实例
     std::map<std::string, std::map<std::string, Callback>> serviceHandlers_;    // 不同服务根据服务名及操作名注册的操作函数
+    void Setnonblocking(int fd);
     void OnNewConnection();         // 处理新连接
     void OnConnectionError();       // 处理连接错误，关闭套接字
     void RemoveConnection(spTcpConnection &sptcpconnection);    // 连接清理，这里应该由EventLoop来执行，投递回主线程删除 OR 多线程加锁删除
@@ -94,6 +93,7 @@ TcpServer::~TcpServer()
  */
 void TcpServer::RegisterHandler(std::string serviceName, const std::string handlerType, const Callback &handlerFunc)
 {
+    std::cout << "输出测试：TcpServer::RegisterHandler 服务：" << serviceName << " 开始注册函数，函数名：" << handlerType << std::endl;
     if(serviceHandlers_.end() == serviceHandlers_.find(serviceName))
     {
         // serviceName服务尚未注册过任何操作函数
@@ -109,6 +109,7 @@ void TcpServer::RegisterHandler(std::string serviceName, const std::string handl
  */
 void TcpServer::BindDynamicHandler(spTcpConnection &sptcpconnection)
 {
+    std::cout << "输出测试：TcpServer::BindDynamicHandler 服务：" << std::endl;
     HttpRequestContext &httpRequestContext = sptcpconnection->GetReqestBuffer();
     std::string url = httpRequestContext.url;
     bool isDefaultHttpService = false;
@@ -193,6 +194,7 @@ void TcpServer::BindDynamicHandler(spTcpConnection &sptcpconnection)
  */
 void TcpServer::OnNewConnection()
 {
+    std::cout << "输出测试：TcpServer::OnNewConnection 服务：" << std::endl;
     struct sockaddr_in clientaddr;
     int clientfd;
     while ((clientfd = tcpServerSocket_.Accept(clientaddr)) > 0)
@@ -231,7 +233,7 @@ void TcpServer::OnNewConnection()
  */
 void TcpServer::OnConnectionError()
 {
-    std::cout << "TcpServer Received an UNKNOWN EVENT" << std::endl;
+    std::cout << "输出测试：TcpServer::OnConnectionError TcpServer Received an UNKNOWN EVENT And Will EXIT" << std::endl;
     tcpServerSocket_.Close();
 }
 
@@ -241,7 +243,7 @@ void TcpServer::OnConnectionError()
  */
 void TcpServer::RemoveConnection(spTcpConnection &sptcpconnection)
 {
-    std::cout << "输出测试：TcpServer即将断开与sockfd为" << sptcpconnection->fd() << "的客户端的连接" << std::endl;
+    std::cout << "输出测试：TcpServer::RemoveConnection TcpServer即将断开与sockfd为" << sptcpconnection->fd() << "的客户端的连接" << std::endl;
     std::lock_guard<std::mutex> lock(mutex_);
     --connCount_;
     tcpConnList_.erase(sptcpconnection->fd());
@@ -251,7 +253,7 @@ void TcpServer::RemoveConnection(spTcpConnection &sptcpconnection)
  * 设置非阻塞IO
  * 
  */
-void Setnonblocking(int fd)
+void TcpServer::Setnonblocking(int fd)
 {
     int opts = fcntl(fd, F_GETFL);
     if (opts < 0)

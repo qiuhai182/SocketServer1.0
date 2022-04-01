@@ -84,7 +84,7 @@ EventLoop::EventLoop()
     // wakeUpChannel_.SetReadHandle(std::bind(&EventLoop::HandleRead, this));
     // wakeUpChannel_.SetErrorHandle(std::bind(&EventLoop::HandleError, this));
     // AddChannelToPoller(&wakeUpChannel_);
-    std::cout << "创建一个EventLoop" << std::endl; 
+    std::cout << "输出测试：EventLoop::EventLoop 创建一个EventLoop" << std::endl; 
 }
 
 EventLoop::~EventLoop()
@@ -98,6 +98,7 @@ EventLoop::~EventLoop()
  */
 void EventLoop::HandleRead()
 {
+    std::cout << "输出测试：EventLoop::~EventLoop EventLoop::HandleRead " << std::endl;
     uint64_t one = 1;
     ssize_t n = read(wakeUpFd_, &one, sizeof one);
 }
@@ -108,6 +109,7 @@ void EventLoop::HandleRead()
  */
 void EventLoop::HandleError()
 {
+    std::cout << "输出测试：EventLoop::HandleError " << std::endl;
 }
 
 /*
@@ -116,7 +118,7 @@ void EventLoop::HandleError()
  */
 void EventLoop::AddChannelToPoller(Channel *pchannel)
 {
-    std::cout << "输出测试：EventLoop添加连接监听，目标sockfd：" << pchannel->GetFd() << std::endl;
+    std::cout << "输出测试：EventLoop::AddChannelToPoller 一个EventLoop添加连接监听，目标sockfd：" << pchannel->GetFd() << std::endl;
     poller_.AddChannel(pchannel);
 }
 
@@ -126,7 +128,7 @@ void EventLoop::AddChannelToPoller(Channel *pchannel)
  */
 void EventLoop::RemoveChannelToPoller(Channel *pchannel)
 {
-    std::cout << "输出测试：EventLoop移除连接监听，目标sockfd：" << pchannel->GetFd() << std::endl;
+    std::cout << "输出测试：EventLoop::RemoveChannelToPoller 一个EventLoop移除连接监听，目标sockfd：" << pchannel->GetFd() << std::endl;
     poller_.RemoveChannel(pchannel);
 }
 
@@ -136,6 +138,7 @@ void EventLoop::RemoveChannelToPoller(Channel *pchannel)
  */
 void EventLoop::UpdateChannelToPoller(Channel *pchannel)
 {
+    std::cout << "输出测试：EventLoop::UpdateChannelToPoller 一个EventLoop更新连接监听，目标sockfd：" << pchannel->GetFd() << std::endl;
     poller_.UpdateChannel(pchannel);
 }
 
@@ -163,6 +166,7 @@ std::thread::id EventLoop::GetThreadId() const
  */
 void EventLoop::AddTask(Functor functor)
 {
+    std::cout << "输出测试：EventLoop::AddTask " << std::endl;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         functorList_.push_back(functor);
@@ -178,6 +182,7 @@ void EventLoop::AddTask(Functor functor)
  */
 void EventLoop::WakeUp()
 {
+    std::cout << "输出测试：EventLoop::WakeUp " << std::endl;
     uint64_t one = 1;
     ssize_t n = write(wakeUpFd_, (char *)(&one), sizeof one);
 }
@@ -190,6 +195,7 @@ void EventLoop::WakeUp()
  */
 void EventLoop::ExecuteTask()
 {
+    std::cout << "输出测试：EventLoop::ExecuteTask " << std::endl;
     // 拷贝任务列表并使任务列表置空
     std::vector<Functor> functorlists;
     {
@@ -220,7 +226,7 @@ void EventLoop::loop()
         poller_.poll(activeChannelList_);
         for (Channel *pchannel : activeChannelList_)
         {
-            std::cout << "输出测试：EventLoop处理新请求事件, 连接sockfd：" << pchannel->GetFd() << std::endl;
+            std::cout << "输出测试：EventLoop::loop EventLoop处理新请求事件, 连接sockfd：" << pchannel->GetFd() << std::endl;
             pchannel->HandleEvent();
         }
         activeChannelList_.clear();
@@ -229,7 +235,7 @@ void EventLoop::loop()
             ExecuteTask();
         }
     }
-    std::cout << "输出测试：一个事件池EventLoop退出" << std::endl;
+    std::cout << "输出测试：EventLoop::loop 一个事件池EventLoop退出" << std::endl;
 }
 
 

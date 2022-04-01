@@ -68,11 +68,10 @@ public:
     bool GetReqHealthy();                       // 获取连接请求解析结果状态
     void SendInLoop();                          // 发送信息函数，由EventLoop执行
     void AddChannelToLoop();                    // EventLoop添加监听Channel
-    void Shutdown();                            // 关闭当前连接，指定EventLoop执行
-    void ShutdownInLoop();                      // 关闭当前连接，由EventLoop执行
+    void Shutdown();                            // 关闭当前连接，指定EventLoop执行HandleClose函数
     void HandleRead();                          // 由TcpConnection的Channel调用，接收客户端发送的数据，再调用绑定的messageCallback_函数
     void HandleWrite();                         // 由TcpConnection的Channel调用，向客户端发送数据，再调用绑定的sendcompleteCallback_函数
-    void HandleError();                         // 由TcpConnection的Channel调用，处理连接错误，再调用绑定的errorCallback_函数与connectioncleanup_函数
+    void HandleError();                         // 由TcpConnection的Channel调用，处理连接错误，再调用绑定的errorCallback_函数及HandleClose函数
     void HandleClose();                         // 由TcpConnection的Channel调用，处理客户端连接关闭，再调用绑定的closeCallback_函数与connectioncleanup_函数
     std::string &GetBufferIn();                 // 获取接收缓冲区的指针
     std::string &GetBufferOut();                // 获取发送缓冲区的指针
@@ -108,6 +107,7 @@ public:
 private:
     EventLoop *loop_;   // 事件池
     std::unique_ptr<Channel> spChannel_;    // 连接Channel实例
+    bool ChannelAdded_; // 当前spChannel_是否已添加到TcpServer->Channel->Poller下进行监听
     int fd_;            // 客户端连接套接字描述符
     struct sockaddr_in clientAddr_; // 连接信息结构体
     bool disConnected_;             // 连接断开标志位
@@ -134,6 +134,7 @@ private:
 TcpConnection::TcpConnection(EventLoop *loop, int fd, const struct sockaddr_in &clientaddr)
     : loop_(loop),
       spChannel_(new Channel()),
+      ChannelAdded_(false),
       fd_(fd),
       clientAddr_(clientaddr),
       halfClose_(false),
@@ -171,6 +172,7 @@ TcpConnection::~TcpConnection()
  */
 void TcpConnection::HandleRead()
 {
+    std::cout << "输出测试：TcpConnection::HandleRead " << std::endl;
     // 接收数据，写入缓冲区bufferIn_
     int result = recvn(fd_, bufferIn_);
     if (result > 0)
@@ -217,7 +219,9 @@ void TcpConnection::HandleRead()
  */
 void TcpConnection::AddChannelToLoop()
 {
+    std::cout << "输出测试：TcpConnection::AddChannelToLoop " << std::endl;
     loop_->AddTask(std::bind(&EventLoop::AddChannelToPoller, loop_, spChannel_.get()));
+    ChannelAdded_ = true;
 }
 
 /*
@@ -226,6 +230,7 @@ void TcpConnection::AddChannelToLoop()
  */
 void TcpConnection::Send(const std::string &s)
 {
+    std::cout << "输出测试：TcpConnection::Send " << std::endl;
     SetSendMessage(s);
     SendBufferOut();
 }
@@ -237,6 +242,7 @@ void TcpConnection::Send(const std::string &s)
  */
 void TcpConnection::Send(const char *s, int length)
 {
+    std::cout << "输出测试：TcpConnection::Send " << std::endl;
     if(!length)
     {
         // 缺省默认长度为0，只能用strlen函数计算s的长度，这会被第一个'\0'截断
@@ -253,6 +259,7 @@ void TcpConnection::Send(const char *s, int length)
  */
 void TcpConnection::SendBufferOut()
 {
+    std::cout << "输出测试：TcpConnection::SendBufferOut " << std::endl;
     // 判断当前线程是不是Loop IO所在线程
     if (loop_->GetThreadId() == std::this_thread::get_id())
     {
@@ -264,6 +271,7 @@ void TcpConnection::SendBufferOut()
         asyncProcessing_ = false;
         // 跨线程调用,加入IO线程的任务队列，唤醒
         spTcpConnection sptcpconn = shared_from_this();
+        std::cout << "输出测试：TcpConnection::SendBufferOut 向loop_添加TcpConnection::SendInLoop函数" << std::endl;
         loop_->AddTask(std::bind(&TcpConnection::SendInLoop, sptcpconn));
     }
 }
@@ -274,6 +282,7 @@ void TcpConnection::SendBufferOut()
  */
 void TcpConnection::SendInLoop()
 {
+    std::cout << "输出测试：TcpConnection::SendInLoop " << std::endl;
     if (disConnected_)
     {
         return;
@@ -303,48 +312,34 @@ void TcpConnection::SendInLoop()
     }
     else if (result < 0)
     {
+        std::cout << "输出测试：TcpConnection::SendInLoop 发送数据失败，错误处理并关闭连接" << std::endl;
         HandleError();
     }
     else
     {
+        std::cout << "输出测试：TcpConnection::SendInLoop 发送数据量为0，关闭连接" << std::endl;
         HandleClose();
     }
 }
 
 /*
- * 关闭当前连接，指定EventLoop执行
+ * 关闭当前连接，指定EventLoop执行HandleClose函数
  * 
  */
 void TcpConnection::Shutdown()
 {
+    std::cout << "输出测试：TcpConnection::Shutdown " << std::endl;
     if (loop_->GetThreadId() == std::this_thread::get_id())
     {
-        ShutdownInLoop();
+        HandleClose();
     }
     else
     {
         // 加入IO线程的任务队列，唤醒
         spTcpConnection sptcpconn = shared_from_this();
-        loop_->AddTask(std::bind(&TcpConnection::ShutdownInLoop, sptcpconn));
+        std::cout << "输出测试：TcpConnection::Shutdown 向loop_添加TcpConnection::HandleClose函数" << std::endl;
+        loop_->AddTask(std::bind(&TcpConnection::HandleClose, sptcpconn));
     }
-}
-
-/*
- * 关闭当前连接，由EventLoop执行
- * 调用绑定的closeCallback_函数
- * 向EventLoop添加connectioncleanup_函数任务
- */
-void TcpConnection::ShutdownInLoop()
-{
-    if (disConnected_)
-    {
-        return;
-    }
-    spTcpConnection sptcpconn = shared_from_this();
-    if(BindedHandler_)
-        closeCallback_(sptcpconn);
-    loop_->AddTask(std::bind(connectioncleanup_, sptcpconn));
-    disConnected_ = true;
 }
 
 /*
@@ -353,6 +348,7 @@ void TcpConnection::ShutdownInLoop()
  */
 void TcpConnection::HandleWrite()
 {
+    std::cout << "输出测试：TcpConnection::HandleWrite " << std::endl;
     int result = sendn(fd_, bufferOut_);
     if (result > 0)
     {
@@ -389,10 +385,11 @@ void TcpConnection::HandleWrite()
  */
 void TcpConnection::HandleError()
 {
+    std::cout << "输出测试：TcpConnection::HandleError " << std::endl;
     if(!BindedHandler_)
     {
-        std::cout << "输出测试：绑定函数失败，本次请求url：" << httpRequestContext_.url << std::endl;
         // 未绑定处理函数或本次请求的函数绑定失败，客户端函数写错了
+        std::cout << "输出测试：绑定函数失败，本次请求url：" << httpRequestContext_.url << std::endl;
         if(!httpRequestContext_.serviceName.empty())
         {
             HttpError(400, "所请求的服务：" + httpRequestContext_.serviceName + " 没有这样的处理函数（" + httpRequestContext_.handlerName + "）：" + httpRequestContext_.url);
@@ -404,14 +401,17 @@ void TcpConnection::HandleError()
     }
     else if(disConnected_)
     {
+        // 连接已被HandleClose处理关闭了
         return;
     }
-    std::cout << "输出测试：TcpConnection错误处理，socket：" << fd_ << std::endl;
-    spTcpConnection sptcpconn = shared_from_this();
-    if(BindedHandler_)
+    else
+    {
+        // 连接尚未关闭，调用可调用的errorCallback_，并关闭连接
+        std::cout << "输出测试：TcpConnection错误处理，socket：" << fd_ << std::endl;
+        spTcpConnection sptcpconn = shared_from_this();
         errorCallback_(sptcpconn);
-    loop_->AddTask(std::bind(connectioncleanup_, sptcpconn)); // 自己不能清理自己，交给loop执行，Tcpserver清理
-    disConnected_ = true;
+        HandleClose();
+    }
 }
 
 /*
@@ -421,21 +421,24 @@ void TcpConnection::HandleError()
  */
 void TcpConnection::HandleClose()
 {
+    std::cout << "输出测试：TcpConnection::HandleClose " << std::endl;
     if (disConnected_)
     {
         return;
     }
-    std::cout << "输出测试：TcpConnection连接即将关闭，socket：" << fd_ << std::endl;
-    if (bufferOut_.size() > 0 || bufferIn_.length() > 0 || asyncProcessing_)
+    std::cout << "输出测试：TcpConnection::HandleClose TcpConnection连接即将关闭，socket：" << fd_ << std::endl;
+    // if (bufferOut_.size() > 0 || bufferIn_.length() > 0 || asyncProcessing_)
+    if (asyncProcessing_)
     {
-        // 如果还有数据待发送、接收或处于异步处理状态，则设置半关闭标志位
+        // 有线程正在逻辑处理
         halfClose_ = true;
-        // 还有数据刚刚才收到，但同时又收到FIN，继续接收数据
         if (bufferIn_.length() > 0)
         {
             spTcpConnection sptcpconn = shared_from_this();
             messageCallback_(sptcpconn);
         }
+        // 重新执行HandleClose
+        HandleClose();
     }
     else
     {
@@ -443,6 +446,7 @@ void TcpConnection::HandleClose()
         if(BindedHandler_)
             closeCallback_(sptcpconn);
         disConnected_ = true;
+        std::cout << "输出测试：TcpConnection::HandleClose 向loop_添加TcpConnection::connectioncleanup_函数" << std::endl;
         loop_->AddTask(std::bind(connectioncleanup_, sptcpconn));
     }
 }
@@ -719,6 +723,7 @@ HttpResponseContext &TcpConnection::GetResonseBuffer()
  */
 bool TcpConnection::ParseHttpRequest()
 {
+    std::cout << "输出测试：TcpConnection::ParseHttpRequest " << std::endl;
     std::string crlf("\r\n"), crlfcrlf("\r\n\r\n");
     size_t prev = 0, next = 0, pos_colon;
     std::string key, value;
@@ -779,6 +784,7 @@ bool TcpConnection::ParseHttpRequest()
  */
 // bool TcpConnection::ParseHttpRequest(char *msg, int msgLength, HttpRequestContext &httprequestcontext)
 // {
+//     std::cout << "输出测试：TcpConnection::ParseHttpRequest " << std::endl;
 //     const char *crlf = "\r\n";
 //     const char *crlfcrlf = "\r\n\r\n";
 //     bool parseresult = false;
@@ -848,6 +854,7 @@ bool TcpConnection::ParseHttpRequest()
  */
 void TcpConnection::HttpError(const int err_num, const std::string &short_msg)
 {
+    std::cout << "输出测试：TcpConnection::HttpError " << std::endl;
     bufferOut_.clear();
     if (httpRequestContext_.version.empty())
     {
