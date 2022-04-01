@@ -15,10 +15,13 @@
 #include <memory>
 #include <functional>
 #include "Timer.hpp"
+#include "Resource.hpp"
 #include "TcpServer.hpp"
 #include "EventLoop.hpp"
 #include "ThreadPool.hpp"
+#include "TypeIdentify.hpp"
 #include "TcpConnection.hpp"
+#include "jsoncpp/json.h"
 
 
 class ResourceServer
@@ -36,13 +39,14 @@ private:
     int tcpServerPort_;         // tcpServer的EPOLL的服务端口
     TcpServer *tcpserver_;      // 基础网络服务TcpServer
     ThreadPool *threadpool_;    // 线程池
-    void ResourceProcess(spTcpConnection &sptcpconn);   // 处理请求并响应
-    // 处理错误http请求，返回错误描述
-    void HttpError(spTcpConnection &sptcpconn, const int err_num, const std::string &short_msg);
-    void HandleMessage(spTcpConnection &sptcpconn);       // ResourceServer模式处理收到的请求
-    void HandleSendComplete(spTcpConnection &sptcpconn);  // ResourceServer模式数据处理发送客户端完毕
-    void HandleClose(spTcpConnection &sptcpconn);         // ResourceServer模式处理连接断开
-    void HandleError(spTcpConnection &sptcpconn);         // ResourceServer模式处理连接出错
+    int getFileSize(char* file_name);                       // 获取文件大小
+    void GetImageResource(spTcpConnection &sptcpconn);      // 获取图片资源文件
+    void SendResource(spTcpConnection &sptcpconn, const std::string &filePath); // 发送请求的资源到客户端
+    void ResourceParseError(spTcpConnection &sptcpconn, const int err_num, const std::string &short_msg);  // 解析请求内容失败
+    void HandleMessage(spTcpConnection &sptcpconn);         // ResourceServer模式处理收到的请求
+    void HandleSendComplete(spTcpConnection &sptcpconn);    // ResourceServer模式数据处理发送客户端完毕
+    void HandleClose(spTcpConnection &sptcpconn);           // ResourceServer模式处理连接断开
+    void HandleError(spTcpConnection &sptcpconn);           // ResourceServer模式处理连接出错
 
 };
 
@@ -59,6 +63,7 @@ ResourceServer::ResourceServer(EventLoop *loop, const int workThreadNum, ThreadP
     tcpserver_->RegisterHandler(serviceName_, TcpServer::SendOverHandler, std::bind(&ResourceServer::HandleSendComplete, this, std::placeholders::_1));
     tcpserver_->RegisterHandler(serviceName_, TcpServer::CloseConnHandler, std::bind(&ResourceServer::HandleClose, this, std::placeholders::_1));
     tcpserver_->RegisterHandler(serviceName_, TcpServer::ErrorConnHandler, std::bind(&ResourceServer::HandleError, this, std::placeholders::_1));
+    tcpserver_->RegisterHandler(serviceName_, "GetImageResource", std::bind(&ResourceServer::GetImageResource, this, std::placeholders::_1));
     if(tcpServerPort_) threadpool_->Start();
 }
 
@@ -80,81 +85,46 @@ ResourceServer::~ResourceServer()
  */
 void ResourceServer::HandleMessage(spTcpConnection &sptcpconn)
 {
+    std::cout << "输出测试：ResourceServer::HandleMessage " << std::endl;
+    // 修改定时器参数
+    sptcpconn->GetTimer()->Adjust(5000, Timer::TimerType::TIMER_ONCE, std::bind(&TcpConnection::Shutdown, sptcpconn));
+    if (false == sptcpconn->GetReqHealthy())
+    {
+        Json::Value resMsg;
+        resMsg["resCode"] = 400;
+        resMsg["aqlRes"] = "Bad request'";
+        ResourceParseError(sptcpconn, 400, resMsg.toStyledString());
+        return;
+    }
+    if (threadpool_->GetThreadNum() > 0)
+    {
+        // 已开启线程池，设置异步处理标志
+        sptcpconn->SetAsyncProcessing(true);
+        // 线程池在此添加任务并唤醒一工作线程执行之
+        threadpool_->AddTask([&]()
+                            {
+                                // 执行动态绑定的处理函数
+                                sptcpconn->GetReqHandler()(sptcpconn);
+                                sptcpconn->SetAsyncProcessing(false);
+                            });
+    }
+    else
+    {
+        // 没有开启线程池，执行动态绑定的处理函数
+        sptcpconn->GetReqHandler()(sptcpconn);
+    }
 }
 
 /*
  * 处理错误http请求，返回错误描述
  * 
  */
-void ResourceServer::HttpError(spTcpConnection &sptcpconn, const int err_num, const std::string &short_msg)
+void ResourceServer::ResourceParseError(spTcpConnection &sptcpconn, const int err_num, const std::string &short_msg)
 {
+    std::cout << "输出测试：ResourceServer::ResourceParseError " << std::endl;
     std::string &responsecontext = sptcpconn->GetBufferOut();
-    if (sptcpconn->GetReqestBuffer().version.empty())
-    {
-        responsecontext += "HTTP/1.1 " + std::to_string(err_num) + " " + short_msg + "\r\n";
-    }
-    else
-    {
-        responsecontext += sptcpconn->GetReqestBuffer().version + " " + std::to_string(err_num) + " " + short_msg + "\r\n";
-    }
-    responsecontext += "Server: Qiu Hai's NetServer/0.1\r\n";
-    responsecontext += "Content-Type: text/html\r\n";
-    responsecontext += "Connection: Keep-Alive\r\n";
-    std::string responsebody;
-    responsebody += "<html><title>出错了</title>";
-    responsebody += "<head><meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\"></head>";
-    responsebody += "<style>body{background-color:#f;font-size:14px;}h1{font-size:60px;color:#eeetext-align:center;padding-top:30px;font-weight:normal;}</style>";
-    responsebody += "<body bgcolor=\"ffffff\"><h1>";
-    responsebody += std::to_string(err_num) + " " + short_msg;
-    responsebody += "</h1><hr><em> Qiu Hai's NetServer</em>\n</body></html>";
-    responsecontext += "Content-Length: " + std::to_string(responsebody.size()) + "\r\n";
-    responsecontext += "\r\n";
-    responsecontext.append(responsebody, 0, responsebody.length());
+    responsecontext.append(short_msg, 0, short_msg.length());
     sptcpconn->SendBufferOut();
-}
-
-/*
- * 处理请求并响应
- * 
- */
-void ResourceServer::ResourceProcess(spTcpConnection &sptcpconn)
-{
-    HttpRequestContext &httprequestcontext = sptcpconn->GetReqestBuffer();
-    std::string &responsecontext = sptcpconn->GetBufferOut();   // 存储响应头+响应内容
-    std::string responsebody;           // 暂存响应内容
-    std::string path;                   // 请求的资源url
-    std::string querystring;            // 请求url的'?'后的信息
-    std::string filetype("text/html");  // 默认资源文件类型
-    size_t pos = httprequestcontext.url.find("?");
-    if (pos != std::string::npos)
-    {
-        // 请求链接包含?，获取'?'以前的path以及'?'以后的querystring
-        path = httprequestcontext.url.substr(0, pos);
-        querystring = httprequestcontext.url.substr(pos + 1);
-    }
-    else
-    {
-        path = httprequestcontext.url;
-    }
-    // keepalive判断处理，包含Connection字段
-    std::map<std::string, std::string>::const_iterator iter = httprequestcontext.header.find("Connection");
-    if (iter != httprequestcontext.header.end())
-    {
-        // Connection字段值为Keep-Alive则保持长连接
-        sptcpconn->SetKeepAlive(iter->second == "Keep-Alive");
-    }
-    else
-    {
-        // 不包含Keep-Alive字段，根据协议版本判断是否需要长连接
-        if (httprequestcontext.version == "HTTP/1.1")
-        {
-            sptcpconn->SetKeepAlive(true); // HTTP/1.1默认长连接
-        }
-        else
-        {
-            sptcpconn->SetKeepAlive(false); // HTTP/1.0默认短连接
-        }
-    }
 }
 
 /*
@@ -163,7 +133,7 @@ void ResourceServer::ResourceProcess(spTcpConnection &sptcpconn)
  */
 void ResourceServer::HandleSendComplete(spTcpConnection &sptcpconn)
 {
-    ;
+    std::cout << "输出测试：ResourceServer::HandleSendComplete " << std::endl;
 }
 
 /*
@@ -172,6 +142,7 @@ void ResourceServer::HandleSendComplete(spTcpConnection &sptcpconn)
  */
 void ResourceServer::HandleClose(spTcpConnection &sptcpconn)
 {
+    std::cout << "输出测试：ResourceServer::HandleClose " << std::endl;
     ;
 }
 
@@ -181,7 +152,121 @@ void ResourceServer::HandleClose(spTcpConnection &sptcpconn)
  */
 void ResourceServer::HandleError(spTcpConnection &sptcpconn)
 {
+    std::cout << "输出测试：ResourceServer::HandleError " << std::endl;
     ;
 }
+
+/*
+ * 获取文件大小	
+ * 
+ */
+int ResourceServer::getFileSize(char* file_name)
+{
+	FILE *fp=fopen(file_name,"r");
+	if(!fp)
+		return -1;
+	fseek(fp, 0, SEEK_END);
+	int size = ftell(fp);
+	fclose(fp);
+	return size;
+}
+
+/*
+ * 发送请求的资源到客户端
+ * 
+ */
+void ResourceServer::SendResource(spTcpConnection &sptcpconn, const std::string &filePath)
+{    
+    std::cout << "输出测试：ResourceServer::SendResource " << std::endl;
+    std::string filetype = TypeIdentify::getContentTypeByPath(filePath);
+    Json::Value resMsg;
+    if(filetype.empty())
+    {
+        // 未知的资源类型
+        std::cout << "输出测试：ResourceServer::SendResource 未知的资源类型：" << filePath << " (" << filetype << ")" << std::endl;
+        resMsg["resCode"] = 404;
+        size_t npos = filePath.rfind('/');
+        resMsg["aqlRes"] = "not found " + filePath.substr(npos + 1) + " ,unknown file-type";
+        ResourceParseError(sptcpconn, 404, resMsg.toStyledString());
+        return;
+    }
+    HttpRequestContext &httprequestcontext = sptcpconn->GetReqestBuffer();
+    std::string &responsecontext = sptcpconn->GetBufferOut();   // 存储响应头+响应内容
+    std::string responsebody;   // 暂存响应内容
+    FILE *fp = NULL;
+    if ((fp = fopen(filePath.c_str(), "rb")) == NULL)
+    {
+        // 未定位到资源文件
+        resMsg["resCode"] = 404;
+        size_t npos = filePath.rfind('/');
+        resMsg["aqlRes"] = "not found " + filePath.substr(npos + 1);
+        ResourceParseError(sptcpconn, 404, resMsg.toStyledString());
+        return;
+    }
+    else
+    {
+        // 读取并发送请求的资源文件
+        std::fstream tmpfile;
+        tmpfile.open(filePath.c_str(), std::ios::in | std::ios::binary | std::ios::ate); // 二进制输入(读取),定位到文件末尾
+        if (tmpfile.is_open())
+        {
+            size_t length = tmpfile.tellg(); // 获取文件大小
+            tmpfile.seekg(0, std::ios::beg); // 定位到文件开始
+            char data[BUFSIZE];
+            while (length >= BUFSIZE)
+            {
+                tmpfile.read(data, BUFSIZE);
+                responsebody.append(data, BUFSIZE);
+                length -= BUFSIZE;
+            }
+            if (length > 0)
+            {
+                tmpfile.read(data, length);
+                responsebody.append(data, length);
+                length = 0;
+            }
+        }
+        fclose(fp);
+    }
+    responsecontext += httprequestcontext.version + " 200 OK\r\n";
+    responsecontext += "Server: QiuHai's NetServer/ResourceService\r\n";
+    responsecontext += "Content-Type: " + filetype + "; charset=utf-8\r\n";
+    // keepalive判断处理，包含Connection字段
+    std::map<std::string, std::string>::const_iterator iter = httprequestcontext.header.find("Connection");
+    if (iter != httprequestcontext.header.end())
+    {
+        responsecontext += "Connection: " + iter->second + "\r\n";
+    }
+    // responsecontext += "Content-Length: " + std::to_string(getFileSize(filePath.data())) + "\r\n\r\n";
+    responsecontext += "Content-Length: " + std::to_string(responsebody.length()) + "\r\n\r\n";
+    responsecontext.append(responsebody, 0, responsebody.length());
+    std::cout << "输出测试：ResourceServer::SendResource 即将发送文件：" << filePath << " 类型为：" << filetype << std::endl;
+    sptcpconn->SendBufferOut();
+}
+
+/*
+ * 获取图片资源文件
+ * 
+ */
+void ResourceServer::GetImageResource(spTcpConnection &sptcpconn)
+{
+    std::cout << "输出测试：HttpServer::HttpProcess 开始处理一个TcpConnection连接的Http请求，连接sockfd：" << sptcpconn->fd() << std::endl;
+    Json::Reader reader;
+    Json::Value jsonBody;
+    if (reader.parse(sptcpconn->GetReqestBuffer().body.data(), jsonBody))  // reader将Json字符串解析到root，root将包含Json里所有子元素  
+    {  
+        std::string imageName = jsonBody["imageName"].asString();
+        std::string path = imgRoot + imageName;
+        SendResource(sptcpconn, path);
+    }
+    else
+    {
+        Json::Value resMsg;
+        resMsg["resCode"] = 400;
+        resMsg["aqlRes"] = "not found [string] for 'imageName'";
+        ResourceParseError(sptcpconn, 400, resMsg.toStyledString());
+    }
+}
+
 
 

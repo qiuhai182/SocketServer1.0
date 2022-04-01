@@ -21,7 +21,6 @@
 #include <arpa/inet.h>
 #include "Timer.hpp"
 #include "Channel.hpp"
-#include "Resource.hpp"
 #include "EventLoop.hpp"
 #include "TypeIdentify.hpp"
 

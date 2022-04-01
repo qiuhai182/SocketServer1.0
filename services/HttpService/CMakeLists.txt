@@ -1,21 +1,22 @@
 cmake_minimum_required(VERSION 3.0)
 
-
 project(SocketService C CXX)
-
 
 # c++编译选项
 set(CMAKE_CXX_FLAGS "-std=c++17")
 
-
 # 添加头文件
 include_directories(../../library)
+
 # 添加源文件
 aux_source_directory(../../library SRC_DIRS_LIBRARY)
 aux_source_directory(. SRC_DIRS_SERVICE)
+
 # 添加cmake所在目录及其子目录的所有.h头文件
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
+#指定链接器搜索库文件时的路径
+link_directories(../../library/out)
 
 # # 调用shell命令或脚本，指定系统include文件目录
 # execute_process(
@@ -48,10 +49,11 @@ protobuf_generate_cpp(PROTO_SRC PROTO_HEADER
 
 SET(CMAKE_BUILD_TYPE "Debug")
 
-# add_executable(server http_server.cpp ${PROTO_HEADER} ${PROTO_SRC} ${SRC_DIRS_LIBRARY} ${SRC_DIRS_SERVICE})
-add_executable(server http_server.cpp ${SRC_DIRS_LIBRARY} ${SRC_DIRS_SERVICE})
 
-# target_link_libraries(server ${BRPC_LIB} ${PROTOBUF_LIBRARIES} mysqlclient hiredis pthread)
+# add_executable(server all_server.cpp ${PROTO_HEADER} ${PROTO_SRC} ${SRC_DIRS_LIBRARY} ${SRC_DIRS_SERVICE})
+add_executable(server all_server.cpp ${SRC_DIRS_LIBRARY} ${SRC_DIRS_SERVICE})
+
+# target_link_libraries(server ${BRPC_LIB} ${PROTOBUF_LIBRARIES} lib_SocketServerLibrary.a mysqlclient hiredis pthread)
 target_link_libraries(server ${BRPC_LIB} ${PROTOBUF_LIBRARIES} mysqlclient pthread)
 
 add_definitions(-w) # 忽略编译警告

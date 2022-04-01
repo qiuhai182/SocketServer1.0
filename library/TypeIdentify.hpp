@@ -702,11 +702,37 @@ const std::pair<std::string, std::string> pairArray[] =
 class TypeIdentify
 {
 public:
-    static std::string getContentType(std::string suffix)
+    static std::string getContentTypeBySuffix(const std::string &suffix)
     {
-        // getTypeIdentifyInstance();
-        // return contentType[suffix];
-        return getTypeIdentifyInstance()->contentType[suffix];
+        std::cout << "输出测试：TypeIdentify::getContentTypeBySuffix " << std::endl;
+        if(getTypeIdentifyInstance()->contentType.end() == getTypeIdentifyInstance()->contentType.find(suffix))
+        {
+            std::cout << "输出测试：TypeIdentify::getContentTypeBySuffix 未定义后缀类型：" << suffix << std::endl;
+            return "";
+        }
+        std::cout << "输出测试：TypeIdentify::getContentTypeBySuffix 成功解析后缀文件类型：" << suffix << " (" << contentType[suffix] << ")" << std::endl;
+        return contentType[suffix];
+    }
+    
+    static std::string getContentTypeByPath(const std::string &pathName)
+    {
+        std::cout << "输出测试：TypeIdentify::getContentTypeByPath " << std::endl;
+        size_t point;
+        std::string suffix;
+        if ((point = pathName.rfind('.')) != std::string::npos)
+        {
+            suffix = pathName.substr(point);
+        }
+        if(suffix.empty())
+        {
+            std::cout << "输出测试：TypeIdentify::getContentTypeByPath 解析后缀失败 路径为：" << pathName << " (" << suffix << ")" << std::endl;
+            return "";
+        }
+        else
+        {
+            std::cout << "输出测试：TypeIdentify::getContentTypeByPath 成功解析后缀 路径为：" << pathName << " (" << suffix << ")" << std::endl;
+            return getContentTypeBySuffix(suffix);
+        }
     }
 
 private:

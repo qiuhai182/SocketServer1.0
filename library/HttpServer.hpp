@@ -52,9 +52,11 @@
 #include <memory>
 #include <functional>
 #include "Timer.hpp"
+#include "Resource.hpp"
 #include "TcpServer.hpp"
 #include "EventLoop.hpp"
 #include "ThreadPool.hpp"
+#include "TypeIdentify.hpp"
 #include "TcpConnection.hpp"
 
 
@@ -230,17 +232,9 @@ void HttpServer::HttpProcess(spTcpConnection &sptcpconn)
         // 为请求的网页资源加上正确的相对路径前缀
         path = wwwRoot + path;
     }
-    size_t point;
-    if ((point = path.rfind('.')) != std::string::npos)
-    {
-        // 判断请求资源文件类型
-        filetype = TypeIdentify::getContentType(path.substr(point));
-        if(filetype.empty())
-        {
-            // 无法识别资源文件类型
-            filetype = "text/html";
-        }
-    }
+    filetype = TypeIdentify::getContentTypeByPath(path);
+    if(filetype.empty())
+        filetype = "text/html";
     FILE *fp = NULL;
     if ((fp = fopen(path.c_str(), "rb")) == NULL)
     {
@@ -294,6 +288,14 @@ void HttpServer::HttpError(spTcpConnection &sptcpconn, const int err_num, const 
 {
     std::cout << "输出测试：HttpServer::HandleError " << std::endl;
     std::string &responsecontext = sptcpconn->GetBufferOut();
+    responsecontext.clear();
+    std::string responsebody;
+    responsebody += "<html><title>出错了</title>";
+    responsebody += "<head><meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\"></head>";
+    responsebody += "<style>body{background-color:#f;font-size:14px;}h1{font-size:60px;color:#eeetext-align:center;padding-top:30px;font-weight:normal;}</style>";
+    responsebody += "<body bgcolor=\"ffffff\"><h1>";
+    responsebody += std::to_string(err_num) + " " + short_msg;
+    responsebody += "</h1><hr><em> Qiu Hai's NetServer</em>\n</body></html>";
     if (sptcpconn->GetReqestBuffer().version.empty())
     {
         responsecontext += "HTTP/1.1 " + std::to_string(err_num) + " " + short_msg + "\r\n";
@@ -305,15 +307,7 @@ void HttpServer::HttpError(spTcpConnection &sptcpconn, const int err_num, const 
     responsecontext += "Server: Qiu Hai's NetServer/0.1\r\n";
     responsecontext += "Content-Type: text/html\r\n";
     responsecontext += "Connection: Keep-Alive\r\n";
-    std::string responsebody;
-    responsebody += "<html><title>出错了</title>";
-    responsebody += "<head><meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\"></head>";
-    responsebody += "<style>body{background-color:#f;font-size:14px;}h1{font-size:60px;color:#eeetext-align:center;padding-top:30px;font-weight:normal;}</style>";
-    responsebody += "<body bgcolor=\"ffffff\"><h1>";
-    responsebody += std::to_string(err_num) + " " + short_msg;
-    responsebody += "</h1><hr><em> Qiu Hai's NetServer</em>\n</body></html>";
-    responsecontext += "Content-Length: " + std::to_string(responsebody.size()) + "\r\n";
-    responsecontext += "\r\n";
+    responsecontext += "Content-Length: " + std::to_string(responsebody.size()) + "\r\n\r\n";
     responsecontext.append(responsebody, 0, responsebody.length());
     sptcpconn->SendBufferOut();
 }

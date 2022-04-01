@@ -284,7 +284,7 @@ void TimerManager::CheckTick()
         time = (tv.tv_sec % 10000) * 1000 + tv.tv_usec / 1000;
         tickcount = (time - oldtime) / slotInterval; // 计算两次check的时间间隔占多少个slot
         // oldtime = time;
-        oldtime = oldtime + tickcount * slotInterval;
+        oldtime += tickcount * slotInterval;
         for (int i = 0; i < tickcount; ++i)
         {
             // 检查每个定时器任务，超时即可执行
