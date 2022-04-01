@@ -109,7 +109,7 @@ void TcpServer::RegisterHandler(std::string serviceName, const std::string handl
  */
 void TcpServer::BindDynamicHandler(spTcpConnection &sptcpconnection)
 {
-    HttpRequestContext &httpRequestContext = sptcpconnection->GetReq();
+    HttpRequestContext &httpRequestContext = sptcpconnection->GetReqestBuffer();
     std::string url = httpRequestContext.url;
     bool isDefaultHttpService = false;
     std::string &serviceName = httpRequestContext.serviceName;

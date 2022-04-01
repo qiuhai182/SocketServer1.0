@@ -89,13 +89,13 @@ void ResourceServer::HandleMessage(spTcpConnection &sptcpconn)
 void ResourceServer::HttpError(spTcpConnection &sptcpconn, const int err_num, const std::string &short_msg)
 {
     std::string &responsecontext = sptcpconn->GetBufferOut();
-    if (sptcpconn->GetReq().version.empty())
+    if (sptcpconn->GetReqestBuffer().version.empty())
     {
         responsecontext += "HTTP/1.1 " + std::to_string(err_num) + " " + short_msg + "\r\n";
     }
     else
     {
-        responsecontext += sptcpconn->GetReq().version + " " + std::to_string(err_num) + " " + short_msg + "\r\n";
+        responsecontext += sptcpconn->GetReqestBuffer().version + " " + std::to_string(err_num) + " " + short_msg + "\r\n";
     }
     responsecontext += "Server: Qiu Hai's NetServer/0.1\r\n";
     responsecontext += "Content-Type: text/html\r\n";
@@ -119,7 +119,7 @@ void ResourceServer::HttpError(spTcpConnection &sptcpconn, const int err_num, co
  */
 void ResourceServer::ResourceProcess(spTcpConnection &sptcpconn)
 {
-    HttpRequestContext &httprequestcontext = sptcpconn->GetReq();
+    HttpRequestContext &httprequestcontext = sptcpconn->GetReqestBuffer();
     std::string &responsecontext = sptcpconn->GetBufferOut();   // 存储响应头+响应内容
     std::string responsebody;           // 暂存响应内容
     std::string path;                   // 请求的资源url

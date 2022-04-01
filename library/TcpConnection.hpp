@@ -11,6 +11,7 @@
 #include <thread>
 #include <memory>
 #include <cerrno>
+#include <cstdlib>
 #include <fstream>
 #include <sstream>
 #include <functional>
@@ -81,8 +82,8 @@ public:
     void StartTimer();                          // 启动定时器
     bool WillKeepAlive();                       // 获取长连接标志
     void SetKeepAlive(bool keepalive);          // 设置长连接标志
-    HttpRequestContext &GetReq();               // 获取请求解析结构体的引用
-    HttpResponseContext &GetRes();              // 获取响应解析结构体的引用
+    HttpRequestContext &GetReqestBuffer();      // 获取请求解析结构体的引用
+    HttpResponseContext &GetResonseBuffer();    // 获取响应解析结构体的引用
     Callback GetMessageCallback();              // 设置连接处理函数
     Callback GetSendCompleteCallback();         // 设置数据发送完毕处理函数
     Callback GetCloseCallback();                // 设置关闭处理函数
@@ -120,13 +121,13 @@ private:
     HttpRequestContext httpRequestContext_;     // 请求解析结构
     HttpResponseContext httpResponseContext_;   // 响应结构
     bool BindedHandler_;            // 处理函数绑定标志
-    Callback BindDynamicHandler_;   // 向TcpServer申请动态绑定函数
-    Callback messageCallback_;      // 请求响应函数
-    Callback sendcompleteCallback_; // 发送完毕处理函数
-    Callback closeCallback_;        // 连接关闭处理函数
-    Callback errorCallback_;        // 错误处理函数
+    Callback messageCallback_;      // 请求响应函数，每次请求都会重置
+    Callback sendcompleteCallback_; // 发送完毕处理函数，每次请求都会重置
+    Callback closeCallback_;        // 连接关闭处理函数，每次请求都会重置
+    Callback errorCallback_;        // 错误处理函数，每次请求都会重置
+    Callback reqHandler_;           // 本次连接事件请求的处理函数，每次请求都会重置
+    Callback BindDynamicHandler_;   // 向TcpServer申请动态绑定函数，此函数独属于TcpServer
     Callback connectioncleanup_;    // 连接清理函数，此函数独属于TcpServer
-    Callback reqHandler_;           // 本次连接事件请求的处理函数
 
 };
 
@@ -160,6 +161,47 @@ TcpConnection::~TcpConnection()
     loop_->RemoveChannelToPoller(spChannel_.get());
     close(fd_);
     delete timer_;
+}
+
+/*
+ * 接收客户端发送的数据，调用绑定的messageCallback_函数
+ * 
+ */
+void TcpConnection::HandleRead()
+{
+    // 接收数据，写入缓冲区bufferIn_
+    int result = recvn(fd_, bufferIn_);
+    if (result > 0)
+    {
+        reqHealthy_ = ParseHttpRequest();
+        spTcpConnection sptcpconn = shared_from_this();
+        // 在此向TcpServer请求函数绑定
+        BindDynamicHandler_(sptcpconn);
+        if(!BindedHandler_)
+        {
+            HandleError();
+        }
+        else
+        {
+            if(!timer_) 
+                timer_ = new Timer(5000, Timer::TimerType::TIMER_ONCE, std::bind(&TcpConnection::Shutdown, shared_from_this()));
+            else
+                timer_->Adjust(5000, Timer::TimerType::TIMER_ONCE, std::bind(&TcpConnection::Shutdown, shared_from_this()));
+            // 将读取到的缓冲区数据bufferIn_回调回动态绑定的上层处理函数messageCallback_
+            timer_->Start();
+            std::cout << "输出测试：即将调用信息处理函数" << std::endl;
+            messageCallback_(sptcpconn);
+            std::cout << "输出测试：调用信息处理函数完毕" << std::endl;
+        }
+    }
+    else if (result == 0)
+    {
+        HandleClose();
+    }
+    else
+    {
+        HandleError();
+    }
 }
 
 /*
@@ -243,8 +285,11 @@ void TcpConnection::SendInLoop()
         {
             // 数据已发完
             spChannel_->SetEvents(events & (~EPOLLOUT));
-            spTcpConnection sptcpconn = shared_from_this();
-            sendcompleteCallback_(sptcpconn);
+            if(BindedHandler_)
+            {
+                spTcpConnection sptcpconn = shared_from_this();
+                sendcompleteCallback_(sptcpconn);
+            }
             // 已设置半关闭标志，连接即将关闭
             if(halfClose_) HandleClose();
         }
@@ -296,44 +341,6 @@ void TcpConnection::ShutdownInLoop()
 }
 
 /*
- * 接收客户端发送的数据，调用绑定的messageCallback_函数
- * 
- */
-void TcpConnection::HandleRead()
-{
-    // 接收数据，写入缓冲区bufferIn_
-    int result = recvn(fd_, bufferIn_);
-    // 在此向TcpServer请求函数绑定
-    spTcpConnection sptcpconn = shared_from_this();
-    BindDynamicHandler_(sptcpconn);
-    if(!BindedHandler_)
-    {
-        HandleError();
-    }
-    else if (result > 0)
-    {
-        reqHealthy_ = ParseHttpRequest();
-        if(!timer_) 
-            timer_ = new Timer(5000, Timer::TimerType::TIMER_ONCE, std::bind(&TcpConnection::Shutdown, shared_from_this()));
-        else
-            timer_->Adjust(5000, Timer::TimerType::TIMER_ONCE, std::bind(&TcpConnection::Shutdown, shared_from_this()));
-        // 将读取到的缓冲区数据bufferIn_回调回动态绑定的上层处理函数messageCallback_
-        timer_->Start();
-        std::cout << "输出测试：即将调用信息处理函数" << std::endl;
-        messageCallback_(sptcpconn);
-        std::cout << "输出测试：调用信息处理函数完毕" << std::endl;
-    }
-    else if (result == 0)
-    {
-        HandleClose();
-    }
-    else
-    {
-        HandleError();
-    }
-}
-
-/*
  * 向客户端发送数据
  * 
  */
@@ -377,7 +384,7 @@ void TcpConnection::HandleError()
 {
     if(!BindedHandler_)
     {
-        std::cout << "输出测试：绑定函数失败，url=" << httpRequestContext_.url << std::endl;
+        std::cout << "输出测试：绑定函数失败，本次请求url：" << httpRequestContext_.url << std::endl;
         // 未绑定处理函数或本次请求的函数绑定失败，客户端函数写错了
         if(!httpRequestContext_.serviceName.empty())
         {
@@ -388,7 +395,7 @@ void TcpConnection::HandleError()
             HttpError(400, "请求报文语法有误，服务器无法识别：" + httpRequestContext_.url);
         }
     }
-    if (disConnected_)
+    else if(disConnected_)
     {
         return;
     }
@@ -411,6 +418,7 @@ void TcpConnection::HandleClose()
     {
         return;
     }
+    std::cout << "输出测试：TcpConnection连接即将关闭处理，socket：" << fd_ << std::endl;
     if (bufferOut_.size() > 0 || bufferIn_.length() > 0 || asyncProcessing_)
     {
         // 如果还有数据待发送、接收或处于异步处理状态，则设置半关闭标志位
@@ -684,7 +692,7 @@ Timer *TcpConnection::GetTimer()
  * 获取请求解析结构体的引用
  * 
  */
-HttpRequestContext &TcpConnection::GetReq()
+HttpRequestContext &TcpConnection::GetReqestBuffer()
 {
     return httpRequestContext_;
 }
@@ -693,7 +701,7 @@ HttpRequestContext &TcpConnection::GetReq()
  * 获取响应解析结构体的引用
  * 
  */
-HttpResponseContext &TcpConnection::GetRes()
+HttpResponseContext &TcpConnection::GetResonseBuffer()
 {
     return httpResponseContext_;
 }
