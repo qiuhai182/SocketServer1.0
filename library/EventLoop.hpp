@@ -116,6 +116,7 @@ void EventLoop::HandleError()
  */
 void EventLoop::AddChannelToPoller(Channel *pchannel)
 {
+    std::cout << "输出测试：EventLoop添加连接监听，目标sockfd：" << pchannel->GetFd() << std::endl;
     poller_.AddChannel(pchannel);
 }
 
@@ -125,6 +126,7 @@ void EventLoop::AddChannelToPoller(Channel *pchannel)
  */
 void EventLoop::RemoveChannelToPoller(Channel *pchannel)
 {
+    std::cout << "输出测试：EventLoop移除连接监听，目标sockfd：" << pchannel->GetFd() << std::endl;
     poller_.RemoveChannel(pchannel);
 }
 
@@ -197,6 +199,7 @@ void EventLoop::ExecuteTask()
     // 执行拷贝的所有任务
     for (Functor &functor : functorlists)
     {
+        std::cout << "输出测试：EventLoop即将执行一个IO任务" << std::endl;
         functor();
     }
     functorlists.clear();
@@ -226,7 +229,7 @@ void EventLoop::loop()
             ExecuteTask();
         }
     }
-    std::cout << "一个事件池EventLoop退出" << std::endl;
+    std::cout << "输出测试：一个事件池EventLoop退出" << std::endl;
 }
 
 

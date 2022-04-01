@@ -121,10 +121,11 @@ void TcpServer::BindDynamicHandler(spTcpConnection &sptcpconnection)
     size_t nextFind = url.find('/', 1);
     if(std::string::npos != nextFind)
     {
-        serviceName = url.substr(1, nextFind);
+        serviceName = url.substr(1, nextFind - 1);
         if(serviceHandlers_.end() == serviceHandlers_.find(serviceName))
         {
             // 服务名解析失败，请求的url无法解析为"/服务名/函数名"的格式，默认为网站式请求
+            serviceName.clear();
             isDefaultHttpService = true;
         }
         else
@@ -134,13 +135,19 @@ void TcpServer::BindDynamicHandler(spTcpConnection &sptcpconnection)
             nextFind = url.find('/', 1); // 可能有，也可能无
             if(std::string::npos != nextFind)
             {
-                handlerName = url.substr(1, nextFind);
+                handlerName = url.substr(1, nextFind - 1);
+                resourceUrl = url.substr(nextFind + 1, url.size() - nextFind);
+            }
+            nextFind = url.find('?', 1); // 可能有，也可能无
+            if(std::string::npos == nextFind)
+            {
+                handlerName = url.substr(1, nextFind - 1);
+                resourceUrl = url.substr(nextFind + 1, url.size() - nextFind);
             }
             else
             {
-                nextFind = 0;
+                handlerName = url.substr(1, url.size() - nextFind);
             }
-            resourceUrl = url.substr(nextFind, url.size());
             // 开始解析函数名
             if(serviceHandlers_[serviceName].end() == serviceHandlers_[serviceName].find(handlerName))
             {
@@ -224,7 +231,7 @@ void TcpServer::OnNewConnection()
  */
 void TcpServer::OnConnectionError()
 {
-    std::cout << "UNKNOWN EVENT" << std::endl;
+    std::cout << "TcpServer Received an UNKNOWN EVENT" << std::endl;
     tcpServerSocket_.Close();
 }
 
@@ -234,6 +241,7 @@ void TcpServer::OnConnectionError()
  */
 void TcpServer::RemoveConnection(spTcpConnection &sptcpconnection)
 {
+    std::cout << "输出测试：TcpServer即将断开与sockfd为" << sptcpconnection->fd() << "的客户端的连接" << std::endl;
     std::lock_guard<std::mutex> lock(mutex_);
     --connCount_;
     tcpConnList_.erase(sptcpconnection->fd());

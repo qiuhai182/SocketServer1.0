@@ -158,9 +158,11 @@ TcpConnection::~TcpConnection()
 {
     // 多线程下，加入loop的任务队列？不用，因为已经在当前loop线程
     // 移除事件，析构成员变量
+    std::cout << "输出测试：一个TcpConnection连接已被废弃，开始析构, 连接sockfd：" << fd_ << std::endl;
     loop_->RemoveChannelToPoller(spChannel_.get());
     close(fd_);
     delete timer_;
+    std::cout << "输出测试：一个TcpConnection连接已被废弃，析构即将结束, 连接sockfd：" << fd_ << std::endl;
 }
 
 /*
@@ -175,10 +177,17 @@ void TcpConnection::HandleRead()
     {
         reqHealthy_ = ParseHttpRequest();
         spTcpConnection sptcpconn = shared_from_this();
+        bool preBindedHandler_ = BindedHandler_;
         // 在此向TcpServer请求函数绑定
         BindDynamicHandler_(sptcpconn);
         if(!BindedHandler_)
         {
+            if(preBindedHandler_)
+            {
+                spTcpConnection sptcpconn = shared_from_this();
+                errorCallback_(sptcpconn);
+                closeCallback_(sptcpconn);
+            }
             HandleError();
         }
         else
@@ -189,9 +198,7 @@ void TcpConnection::HandleRead()
                 timer_->Adjust(5000, Timer::TimerType::TIMER_ONCE, std::bind(&TcpConnection::Shutdown, shared_from_this()));
             // 将读取到的缓冲区数据bufferIn_回调回动态绑定的上层处理函数messageCallback_
             timer_->Start();
-            std::cout << "输出测试：即将调用信息处理函数" << std::endl;
             messageCallback_(sptcpconn);
-            std::cout << "输出测试：调用信息处理函数完毕" << std::endl;
         }
     }
     else if (result == 0)
@@ -388,7 +395,7 @@ void TcpConnection::HandleError()
         // 未绑定处理函数或本次请求的函数绑定失败，客户端函数写错了
         if(!httpRequestContext_.serviceName.empty())
         {
-            HttpError(400, "所请求的服务：" + httpRequestContext_.serviceName + " 没有这样的处理函数：" + httpRequestContext_.url);
+            HttpError(400, "所请求的服务：" + httpRequestContext_.serviceName + " 没有这样的处理函数（" + httpRequestContext_.handlerName + "）：" + httpRequestContext_.url);
         }
         else
         {
@@ -418,7 +425,7 @@ void TcpConnection::HandleClose()
     {
         return;
     }
-    std::cout << "输出测试：TcpConnection连接即将关闭处理，socket：" << fd_ << std::endl;
+    std::cout << "输出测试：TcpConnection连接即将关闭，socket：" << fd_ << std::endl;
     if (bufferOut_.size() > 0 || bufferIn_.length() > 0 || asyncProcessing_)
     {
         // 如果还有数据待发送、接收或处于异步处理状态，则设置半关闭标志位
@@ -883,7 +890,7 @@ int TcpConnection::recvn(int fd, std::string &recvMsg)
             recvMsg.append(buffer, nbyte);
             if (nbyte < BUFSIZE)
             {
-                std::cout << std::endl << "接收到请求内容：" << std::endl << recvMsg << std::endl << std::endl;
+                // std::cout << std::endl << "接收到请求内容：" << std::endl << recvMsg << std::endl << std::endl;
                return recvMsg.length(); // 读优化，减小一次读调用，因为一次调用耗时10+us
             }
             else

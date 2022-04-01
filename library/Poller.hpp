@@ -142,18 +142,19 @@ void Poller::poll(ChannelList &activeChannelList)
         // 设置连接Channel实例新连接事件
         if (iter != channelMap_.end())
         {
+            std::cout << "输出测试：Poller已找到一个已连接事件的Channel实例，连接socketfd：" << fd << std::endl;
             pchannel->SetEvents(events);
             activeChannelList.push_back(pchannel);
         }
         else
         {
-            std::cout << "Poller未找到该连接的Channel实例，连接socketfd：" << fd << std::endl;
+            std::cout << "输出测试：Poller未找到该连接的Channel实例，连接socketfd：" << fd << std::endl;
         }
     }
     // epoll事件列表满，翻倍扩大eventList_预分配容量
     if (nfds == (int)eventList_.capacity())
     {
-        std::cout << "resize:" << nfds << std::endl;
+        std::cout << "输出测试：epoll池容量满，容量翻倍" << nfds << std::endl;
         eventList_.resize(nfds * 2);
     }
     eventList_.clear();
