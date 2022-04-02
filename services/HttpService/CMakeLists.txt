@@ -7,9 +7,11 @@ set(CMAKE_CXX_FLAGS "-std=c++17")
 
 # 添加头文件
 include_directories(../../library)
+include_directories(../../library/jsoncpp)
 
 # 添加源文件
 aux_source_directory(../../library SRC_DIRS_LIBRARY)
+aux_source_directory(../../library/jsoncpp SRC_DIRS_LIBRARY_JSONCPP)
 aux_source_directory(. SRC_DIRS_SERVICE)
 
 # 添加cmake所在目录及其子目录的所有.h头文件
@@ -50,8 +52,8 @@ protobuf_generate_cpp(PROTO_SRC PROTO_HEADER
 SET(CMAKE_BUILD_TYPE "Debug")
 
 
-# add_executable(server all_server.cpp ${PROTO_HEADER} ${PROTO_SRC} ${SRC_DIRS_LIBRARY} ${SRC_DIRS_SERVICE})
-add_executable(server all_server.cpp ${SRC_DIRS_LIBRARY} ${SRC_DIRS_SERVICE})
+# add_executable(server all_server.cpp ${PROTO_HEADER} ${PROTO_SRC} ${SRC_DIRS_LIBRARY} ${SRC_DIRS_SERVICE} ${SRC_DIRS_LIBRARY_JSONCPP})
+add_executable(server all_server.cpp ${SRC_DIRS_LIBRARY} ${SRC_DIRS_SERVICE} ${SRC_DIRS_LIBRARY_JSONCPP})
 
 # target_link_libraries(server ${BRPC_LIB} ${PROTOBUF_LIBRARIES} lib_SocketServerLibrary.a mysqlclient hiredis pthread)
 target_link_libraries(server ${BRPC_LIB} ${PROTOBUF_LIBRARIES} mysqlclient pthread)

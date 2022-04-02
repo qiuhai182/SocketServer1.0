@@ -42,7 +42,7 @@ private:
     int getFileSize(char* file_name);                       // 获取文件大小
     void GetImageResource(spTcpConnection &sptcpconn);      // 获取图片资源文件
     void SendResource(spTcpConnection &sptcpconn, const std::string &filePath); // 发送请求的资源到客户端
-    void ResourceParseError(spTcpConnection &sptcpconn, const int err_num, const std::string &short_msg);  // 解析请求内容失败
+    void HttpError(spTcpConnection &sptcpconn, const std::string &short_msg);  // 解析请求内容失败
     void HandleMessage(spTcpConnection &sptcpconn);         // ResourceServer模式处理收到的请求
     void HandleSendComplete(spTcpConnection &sptcpconn);    // ResourceServer模式数据处理发送客户端完毕
     void HandleClose(spTcpConnection &sptcpconn);           // ResourceServer模式处理连接断开
@@ -93,7 +93,7 @@ void ResourceServer::HandleMessage(spTcpConnection &sptcpconn)
         Json::Value resMsg;
         resMsg["resCode"] = 400;
         resMsg["aqlRes"] = "Bad request'";
-        ResourceParseError(sptcpconn, 400, resMsg.toStyledString());
+        HttpError(sptcpconn, resMsg.toStyledString());
         return;
     }
     if (threadpool_->GetThreadNum() > 0)
@@ -119,10 +119,16 @@ void ResourceServer::HandleMessage(spTcpConnection &sptcpconn)
  * 处理错误http请求，返回错误描述
  * 
  */
-void ResourceServer::ResourceParseError(spTcpConnection &sptcpconn, const int err_num, const std::string &short_msg)
+void ResourceServer::HttpError(spTcpConnection &sptcpconn, const std::string &short_msg)
 {
-    std::cout << "输出测试：ResourceServer::ResourceParseError " << std::endl;
+    std::cout << "输出测试：ResourceServer::HttpError " << std::endl;
     std::string &responsecontext = sptcpconn->GetBufferOut();
+    responsecontext.clear();
+    responsecontext += "HTTP/1.1 200 ok\r\n";
+    responsecontext += "Server: Qiu Hai's NetServer/ResourceServer\r\n";
+    responsecontext += "Content-Type: application/json\r\n";
+    responsecontext += "Connection: close\r\n";
+    responsecontext += "Content-Length: " + std::to_string(short_msg.size()) + "\r\n\r\n";
     responsecontext.append(short_msg, 0, short_msg.length());
     sptcpconn->SendBufferOut();
 }
@@ -187,7 +193,7 @@ void ResourceServer::SendResource(spTcpConnection &sptcpconn, const std::string 
         resMsg["resCode"] = 404;
         size_t npos = filePath.rfind('/');
         resMsg["aqlRes"] = "not found " + filePath.substr(npos + 1) + " ,unknown file-type";
-        ResourceParseError(sptcpconn, 404, resMsg.toStyledString());
+        HttpError(sptcpconn, resMsg.toStyledString());
         return;
     }
     HttpRequestContext &httprequestcontext = sptcpconn->GetReqestBuffer();
@@ -200,7 +206,7 @@ void ResourceServer::SendResource(spTcpConnection &sptcpconn, const std::string 
         resMsg["resCode"] = 404;
         size_t npos = filePath.rfind('/');
         resMsg["aqlRes"] = "not found " + filePath.substr(npos + 1);
-        ResourceParseError(sptcpconn, 404, resMsg.toStyledString());
+        HttpError(sptcpconn, resMsg.toStyledString());
         return;
     }
     else
@@ -250,7 +256,9 @@ void ResourceServer::SendResource(spTcpConnection &sptcpconn, const std::string 
  */
 void ResourceServer::GetImageResource(spTcpConnection &sptcpconn)
 {
-    std::cout << "输出测试：HttpServer::HttpProcess 开始处理一个TcpConnection连接的Http请求，连接sockfd：" << sptcpconn->fd() << std::endl;
+    // 修改定时器参数
+    std::cout << "输出测试：ResourceServer::GetImageResource 开始处理一个TcpConnection连接的Http请求，连接sockfd：" << sptcpconn->fd() << std::endl;
+    sptcpconn->GetTimer()->Adjust(5000, Timer::TimerType::TIMER_ONCE, std::bind(&TcpConnection::Shutdown, sptcpconn));
     Json::Reader reader;
     Json::Value jsonBody;
     if (reader.parse(sptcpconn->GetReqestBuffer().body.data(), jsonBody))  // reader将Json字符串解析到root，root将包含Json里所有子元素  
@@ -264,7 +272,7 @@ void ResourceServer::GetImageResource(spTcpConnection &sptcpconn)
         Json::Value resMsg;
         resMsg["resCode"] = 400;
         resMsg["aqlRes"] = "not found [string] for 'imageName'";
-        ResourceParseError(sptcpconn, 400, resMsg.toStyledString());
+        HttpError(sptcpconn, resMsg.toStyledString());
     }
 }
 

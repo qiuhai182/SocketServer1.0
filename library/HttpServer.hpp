@@ -79,6 +79,7 @@ private:
     void HttpProcess(spTcpConnection &sptcpconn);   // 处理请求并响应
     // 处理错误http请求，返回错误描述
     void HttpError(spTcpConnection &sptcpconn, const int err_num, const std::string &short_msg);
+    void SendResource(spTcpConnection &sptcpconn, const std::string &filePath); // 发送请求的资源到客户端
     void HandleMessage(spTcpConnection &sptcpconn);       // HttpServer模式处理收到的请求
     void HandleSendComplete(spTcpConnection &sptcpconn);  // HttpServer模式数据处理发送客户端完毕
     void HandleClose(spTcpConnection &sptcpconn);         // HttpServer模式处理连接断开
@@ -216,7 +217,7 @@ void HttpServer::HttpProcess(spTcpConnection &sptcpconn)
         // '/hello'处理为以下内容，作为参考
         responsebody = ("hello world");
         responsecontext += httprequestcontext.version + " 200 OK\r\n";
-        responsecontext += "Server: Qiu Hai's NetServer/0.1\r\n";
+        responsecontext += "Server: Qiu Hai's NetServer/HttpService\r\n";
         responsecontext += "Content-Type: " + filetype + "; charset=utf-8\r\n";
         if (iter != httprequestcontext.header.end())
         {
@@ -232,21 +233,41 @@ void HttpServer::HttpProcess(spTcpConnection &sptcpconn)
         // 为请求的网页资源加上正确的相对路径前缀
         path = wwwRoot + path;
     }
-    filetype = TypeIdentify::getContentTypeByPath(path);
+    SendResource(sptcpconn, path);
+}
+
+/*
+ * 发送请求的资源到客户端
+ * 
+ */
+void HttpServer::SendResource(spTcpConnection &sptcpconn, const std::string &filePath)
+{    
+    std::cout << "输出测试：HttpServer::SendResource " << std::endl;
+    std::string filetype = TypeIdentify::getContentTypeByPath(filePath);
+    HttpRequestContext &httprequestcontext = sptcpconn->GetReqestBuffer();
     if(filetype.empty())
-        filetype = "text/html";
+    {
+        // 未知的资源类型
+        std::cout << "输出测试：HttpServer::SendResource 未知的资源类型：" << filePath << " (" << filetype << ")" << std::endl;
+        size_t npos = filePath.rfind('/');
+        HttpError(sptcpconn, 404, "Not Found Resource : \"" + filePath.substr(npos + 1) + "\" ,unknown file-type");
+        return;
+    }
+    std::string &responsecontext = sptcpconn->GetBufferOut();   // 存储响应头+响应内容
+    std::string responsebody;   // 暂存响应内容
     FILE *fp = NULL;
-    if ((fp = fopen(path.c_str(), "rb")) == NULL)
+    if ((fp = fopen(filePath.c_str(), "rb")) == NULL)
     {
         // 未定位到资源文件
-        HttpError(sptcpconn, 404, "Not Found Resource or Service : \"" + httprequestcontext.url + "\"");
+        size_t npos = filePath.rfind('/');
+        HttpError(sptcpconn, 404, "Not Found Resource : \"" + filePath.substr(npos + 1) + "\" ");
         return;
     }
     else
     {
         // 读取并发送请求的资源文件
         std::fstream tmpfile;
-        tmpfile.open(path.c_str(), std::ios::in | std::ios::binary | std::ios::ate); // 二进制输入(读取),定位到文件末尾
+        tmpfile.open(filePath.c_str(), std::ios::in | std::ios::binary | std::ios::ate); // 二进制输入(读取),定位到文件末尾
         if (tmpfile.is_open())
         {
             size_t length = tmpfile.tellg(); // 获取文件大小
@@ -268,15 +289,18 @@ void HttpServer::HttpProcess(spTcpConnection &sptcpconn)
         fclose(fp);
     }
     responsecontext += httprequestcontext.version + " 200 OK\r\n";
-    responsecontext += "Server: QiuHai's NetServer/0.1\r\n";
+    responsecontext += "Server: QiuHai's NetServer/ResourceService\r\n";
     responsecontext += "Content-Type: " + filetype + "; charset=utf-8\r\n";
+    // keepalive判断处理，包含Connection字段
+    std::map<std::string, std::string>::const_iterator iter = httprequestcontext.header.find("Connection");
     if (iter != httprequestcontext.header.end())
     {
         responsecontext += "Connection: " + iter->second + "\r\n";
     }
-    // responsecontext += "Content-Length: " + std::to_string(getFileSize(path.data())) + "\r\n\r\n";
+    // responsecontext += "Content-Length: " + std::to_string(getFileSize(filePath.data())) + "\r\n\r\n";
     responsecontext += "Content-Length: " + std::to_string(responsebody.length()) + "\r\n\r\n";
     responsecontext.append(responsebody, 0, responsebody.length());
+    std::cout << "输出测试：HttpServer::SendResource 即将发送文件：" << filePath << " 类型为：" << filetype << std::endl;
     sptcpconn->SendBufferOut();
 }
 
@@ -304,7 +328,7 @@ void HttpServer::HttpError(spTcpConnection &sptcpconn, const int err_num, const 
     {
         responsecontext += sptcpconn->GetReqestBuffer().version + " " + std::to_string(err_num) + " " + short_msg + "\r\n";
     }
-    responsecontext += "Server: Qiu Hai's NetServer/0.1\r\n";
+    responsecontext += "Server: Qiu Hai's NetServer/HttpService\r\n";
     responsecontext += "Content-Type: text/html\r\n";
     responsecontext += "Connection: Keep-Alive\r\n";
     responsecontext += "Content-Length: " + std::to_string(responsebody.size()) + "\r\n\r\n";
