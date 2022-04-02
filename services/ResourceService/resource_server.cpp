@@ -22,9 +22,10 @@ int main(int argc, char *argv[])
         iothreadnum = atoi(argv[2]);        // EventLoop工作线程数量
         workerthreadnum = atoi(argv[3]);    // 线程池工作线程数量
     }
+
     EventLoop loop;
-    HttpServer httpServer(&loop, workerthreadnum, iothreadnum, port);
-    httpServer.Start();
+    HttpServer httpServer(&loop, workerthreadnum, nullptr, iothreadnum, port, NULL);
+
     try
     {
         loop.loop();

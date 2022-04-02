@@ -70,6 +70,7 @@ TcpServer::TcpServer(EventLoop *loop, const int port, const int threadnum)
       connCount_(0),
       eventLoopThreadPool(loop, threadnum)
 {
+    std::cout << "输出测试：TcpServer::TcpServer 创建一个监听端口：" << port << "，io线程数为：" << threadnum << "的TcpServer监听" << std::endl;
     tcpServerSocket_.SetReuseAddr();
     tcpServerSocket_.BindAddress(port);
     tcpServerSocket_.Listen();
@@ -78,7 +79,7 @@ TcpServer::TcpServer(EventLoop *loop, const int port, const int threadnum)
     tcpServerChannel_.SetReadHandle(std::bind(&TcpServer::OnNewConnection, this));
     tcpServerChannel_.SetErrorHandle(std::bind(&TcpServer::OnConnectionError, this));
     tcpServerChannel_.SetEvents(EPOLLIN | EPOLLET);     // 设置当前连接的监听事件
-    std::cout << "输出测试：TcpServer服务套接字添加到MainEventLoop的epoll内进行监听，tcpServerSockfd：" << tcpServerSocket_.fd() << std::endl;
+    std::cout << "输出测试：TcpServer::TcpServer TcpServer服务套接字添加到MainEventLoop的epoll内进行监听，tcpServerSockfd：" << tcpServerSocket_.fd() << std::endl;
     mainLoop_->AddChannelToPoller(&tcpServerChannel_);  // 主事件池添加当前Channel为监听对象
 }
 

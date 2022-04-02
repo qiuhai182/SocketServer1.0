@@ -52,8 +52,8 @@ protobuf_generate_cpp(PROTO_SRC PROTO_HEADER
 SET(CMAKE_BUILD_TYPE "Debug")
 
 
-# add_executable(server all_server.cpp ${PROTO_HEADER} ${PROTO_SRC} ${SRC_DIRS_LIBRARY} ${SRC_DIRS_SERVICE} ${SRC_DIRS_LIBRARY_JSONCPP})
-add_executable(server all_server.cpp ${SRC_DIRS_LIBRARY} ${SRC_DIRS_SERVICE} ${SRC_DIRS_LIBRARY_JSONCPP})
+# add_executable(server resource_server.cpp ${PROTO_HEADER} ${PROTO_SRC} ${SRC_DIRS_LIBRARY} ${SRC_DIRS_SERVICE} ${SRC_DIRS_LIBRARY_JSONCPP})
+add_executable(server resource_server.cpp ${SRC_DIRS_LIBRARY} ${SRC_DIRS_SERVICE} ${SRC_DIRS_LIBRARY_JSONCPP})
 
 # target_link_libraries(server ${BRPC_LIB} ${PROTOBUF_LIBRARIES} lib_SocketServerLibrary.a mysqlclient hiredis pthread)
 target_link_libraries(server ${BRPC_LIB} ${PROTOBUF_LIBRARIES} mysqlclient pthread)

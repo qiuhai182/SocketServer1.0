@@ -25,13 +25,16 @@ int main(int argc, char *argv[])
     }
 
     EventLoop loop;     // 多服务共享EventLoop
-    TcpServer tcpServer(&loop, port, iothreadnum);  // 多服务共享基于EPOLL的TcpServer
     ThreadPool threadPool(workerthreadnum);         // 多服务共享线程池
     threadPool.Start();
+    TcpServer tcpServer(&loop, port, iothreadnum);  // 多服务共享基于EPOLL的TcpServer
+
+    // 网站式HttpServer服务一般部署于80端口，此处HttpServer共享线程池threadPool，但独立创建一个监听80端口的TcpServer
+    HttpServer httpServer(&loop, 0, &threadPool, iothreadnum, 80, nullptr); // NULL与nullptr相等
     // 以下多个服务构造时使用共享的tcpServer和threadPool，则其相应构造参数可以置为0
     // 这样做的好处是析构时每个服务内部可根据构造参数判断是否需要delete对象指针：tcpServer和threadPool
-    HttpServer httpServer(&loop, 0, &threadPool, 0, 0, &tcpServer);
     ResourceServer resourceServer(&loop, 0, &threadPool, 0, 0, &tcpServer);
+    
     try
     {
         loop.loop();

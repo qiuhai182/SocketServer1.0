@@ -226,6 +226,7 @@ void HttpServer::HttpProcess(spTcpConnection &sptcpconn)
         responsecontext += "Content-Length: " + std::to_string(responsebody.size()) + "\r\n";
         responsecontext += "\r\n";
         responsecontext += responsebody;
+        sptcpconn->SendBufferOut();
         return;
     }
     else
