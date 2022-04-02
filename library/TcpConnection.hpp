@@ -78,6 +78,7 @@ public:
     int GetSendLength();                        // 获取待发送数据的长度
     Timer *GetTimer();                          // 获取定时器指针
     void StartTimer();                          // 启动定时器
+    bool IsDisconnected();                      // 判断连接是否已关闭
     bool WillKeepAlive();                       // 获取长连接标志
     void SetKeepAlive(bool keepalive);          // 设置长连接标志
     HttpRequestContext &GetReqestBuffer();      // 获取请求解析结构体的引用
@@ -172,6 +173,11 @@ TcpConnection::~TcpConnection()
 void TcpConnection::HandleRead()
 {
     std::cout << "输出测试：TcpConnection::HandleRead " << std::endl;
+    if (disConnected_)
+    {
+        std::cout << "输出测试：TcpConnection::HandleRead 连接已关闭，无法接收任何数据，连接sockfd：" << fd_ << std::endl;
+        return;
+    }
     // 接收数据，写入缓冲区bufferIn_
     int result = recvn(fd_, bufferIn_);
     if (result > 0)
@@ -284,6 +290,7 @@ void TcpConnection::SendInLoop()
     std::cout << "输出测试：TcpConnection::SendInLoop " << std::endl;
     if (disConnected_)
     {
+        std::cout << "输出测试：TcpConnection::SendInLoop 连接已关闭，无法发送任何数据，连接sockfd：" << fd_ << std::endl;
         return;
     }
     int result = sendn(fd_, bufferOut_);
@@ -348,6 +355,11 @@ void TcpConnection::Shutdown()
 void TcpConnection::HandleWrite()
 {
     std::cout << "输出测试：TcpConnection::HandleWrite " << std::endl;
+    if (disConnected_)
+    {
+        std::cout << "输出测试：TcpConnection::HandleWrite 连接已关闭，无法发送任何数据，连接sockfd：" << fd_ << std::endl;
+        return;
+    }
     int result = sendn(fd_, bufferOut_);
     if (result > 0)
     {
@@ -370,10 +382,12 @@ void TcpConnection::HandleWrite()
     }
     else if (result < 0)
     {
+        std::cout << "输出测试：TcpConnection::HandleWrite 数据发送失败，错误处理" << std::endl;
         HandleError();
     }
     else
     {
+        std::cout << "输出测试：TcpConnection::HandleWrite 数据发送量为0，关闭连接" << std::endl;
         HandleClose();
     }
 }
@@ -385,6 +399,11 @@ void TcpConnection::HandleWrite()
 void TcpConnection::HandleError()
 {
     std::cout << "输出测试：TcpConnection::HandleError " << std::endl;
+    if (disConnected_)
+    {
+        std::cout << "输出测试：TcpConnection::HandleError 连接已关闭，无法发送任何数据，连接sockfd：" << fd_ << std::endl;
+        return;
+    }
     if(!BindedHandler_)
     {
         // 未绑定处理函数或本次请求的函数绑定失败，客户端函数写错了
@@ -423,12 +442,14 @@ void TcpConnection::HandleClose()
     std::cout << "输出测试：TcpConnection::HandleClose " << std::endl;
     if (disConnected_)
     {
+        std::cout << "输出测试：TcpConnection::HandleClose 无需处理已关闭的连接TcpConnection，socket：" << fd_ << std::endl;
         return;
     }
     std::cout << "输出测试：TcpConnection::HandleClose TcpConnection连接即将关闭，socket：" << fd_ << std::endl;
     // if (bufferOut_.size() > 0 || bufferIn_.length() > 0 || asyncProcessing_)
     if (asyncProcessing_)
     {
+        std::cout << "输出测试：TcpConnection::HandleClose TcpConnection连接未正常处理，半关闭并处理，socket：" << fd_ << std::endl;
         // 有线程正在逻辑处理
         halfClose_ = true;
         if (bufferIn_.length() > 0)
@@ -436,8 +457,6 @@ void TcpConnection::HandleClose()
             spTcpConnection sptcpconn = shared_from_this();
             messageCallback_(sptcpconn);
         }
-        // 重新执行HandleClose
-        HandleClose();
     }
     else
     {
@@ -651,6 +670,15 @@ int TcpConnection::GetReceiveLength()
 int TcpConnection::GetSendLength()
 {
     return bufferOut_.length();
+}
+
+/*
+ * 判断连接是否已关闭，是则返回true，否则返回false
+ * 
+ */
+bool TcpConnection::IsDisconnected()
+{
+    return disConnected_;
 }
 
 /*

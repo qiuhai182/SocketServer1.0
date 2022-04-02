@@ -138,8 +138,16 @@ void HttpServer::HandleMessage(spTcpConnection &sptcpconn)
         threadpool_->AddTask([&]()
                             {
                                 // 执行动态绑定的处理函数
-                                sptcpconn->GetReqHandler()(sptcpconn);
-                                sptcpconn->SetAsyncProcessing(false);
+                                std::cout << "工作线程执行sptcpconn的绑定函数，此时sptcpconn->IsDisconnected()："<< sptcpconn->IsDisconnected() << std::endl;
+                                if(sptcpconn->IsDisconnected())
+                                {
+                                    std::cout << "工作线程执行sptcpconn的绑定函数，此时sptcpconn已关闭，不作处理" << std::endl;
+                                }
+                                else
+                                {
+                                    sptcpconn->GetReqHandler()(sptcpconn);
+                                    sptcpconn->SetAsyncProcessing(false);
+                                }
                             });
     }
     else
