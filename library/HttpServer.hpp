@@ -145,7 +145,15 @@ void HttpServer::HandleMessage(spTcpConnection &sptcpconn)
                                 }
                                 else
                                 {
-                                    sptcpconn->GetReqHandler()(sptcpconn);
+                                    try
+                                    {
+                                        sptcpconn->GetReqHandler()(sptcpconn);
+                                    }
+                                    catch(std::bad_function_call)
+                                    {
+                                        std::cout << "工作线程执行sptcpconn的绑定函数报错：std::bad_function_call，连接绑定函数异常，sockfd：" << sptcpconn->fd() << std::endl;
+                                        sptcpconn->SetAsyncProcessing(false);
+                                    }
                                     sptcpconn->SetAsyncProcessing(false);
                                 }
                             });
@@ -153,7 +161,14 @@ void HttpServer::HandleMessage(spTcpConnection &sptcpconn)
     else
     {
         // 没有开启线程池，执行动态绑定的处理函数
-        sptcpconn->GetReqHandler()(sptcpconn);
+        try
+        {
+            sptcpconn->GetReqHandler()(sptcpconn);
+        }
+        catch(std::bad_function_call)
+        {
+            std::cout << "工作线程执行sptcpconn的绑定函数报错：std::bad_function_call，连接绑定函数异常，sockfd：" << sptcpconn->fd() << std::endl;
+        }
     }
 }
 

@@ -166,9 +166,8 @@ std::thread::id EventLoop::GetThreadId() const
  */
 void EventLoop::AddTask(Functor functor)
 {
-    std::cout << "输出测试：EventLoop::AddTask " << std::endl;
+    std::cout << "输出测试：EventLoop::AddTask 添加一个待执行函数到事件池等待执行" << std::endl;
     {
-        std::lock_guard<std::mutex> lock(mutex_);
         functorList_.push_back(functor);
     }
     WakeUp();
@@ -206,7 +205,14 @@ void EventLoop::ExecuteTask()
     for (Functor &functor : functorlists)
     {
         std::cout << "输出测试：EventLoop即将执行一个IO任务" << std::endl;
-        functor();
+        try
+        {
+            functor();
+        }
+        catch(std::bad_function_call)
+        {
+            std::cout << "输出测试：EventLoop执行一个IO任务报错：std::bad_function_call，函数调用失败" << std::endl;
+        }
     }
     functorlists.clear();
 }

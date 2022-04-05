@@ -195,7 +195,7 @@ void TcpServer::BindDynamicHandler(spTcpConnection &sptcpconnection)
  */
 void TcpServer::OnNewConnection()
 {
-    std::cout << "输出测试：TcpServer::OnNewConnection 服务：" << std::endl;
+    std::cout << "输出测试：TcpServer::OnNewConnection " << std::endl;
     struct sockaddr_in clientaddr;
     int clientfd;
     while ((clientfd = tcpServerSocket_.Accept(clientaddr)) > 0)
@@ -211,8 +211,7 @@ void TcpServer::OnNewConnection()
             continue;
         }
         Setnonblocking(clientfd);
-        // 从多线程事件池获取一个事件池索引，该事件池可能是主事件池线程
-        // 也可能是事件池工作线程
+        // 从多线程事件池获取一个事件池索引，该事件池可能是主事件池线程，也可能是事件池工作线程
         // 无论是哪一种，在运行期间都会循环调用loop的poll监听直至服务关闭
         EventLoop *loop = eventLoopThreadPool.GetNextLoop();
         // 创建连接抽象类实例TcpConnection，创建时clientfd已有请求数据待读取
