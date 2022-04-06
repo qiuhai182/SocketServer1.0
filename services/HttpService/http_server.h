@@ -3,6 +3,7 @@
 #ifndef _HTTP_SERVER_H_
 #define _HTTP_SERVER_H_
 
+#include <iostream>
 #include <csignal>
 #include "../../library/HttpServer.hpp"
 
@@ -14,6 +15,7 @@ EventLoop *lp; // 事件池指针
  */
 static void sighandler1(int sig_no)
 {
+    std::cout << "HttpServer正在停止服务。。。" << std::endl;
     exit(0);
 }
 
@@ -25,6 +27,5 @@ static void sighandler2(int sig_no)
 {
     lp->Quit();
 }
-
 
 #endif

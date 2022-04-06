@@ -40,22 +40,21 @@ public:
     static const std::string ErrorConnHandler;
     // 高层服务向tcpServer注册传递给底层connection->channel的处理函数
     void RegisterHandler(std::string serviceName, const std::string handlerType, const Callback &handlerFunc);
-    void BindDynamicHandler(spTcpConnection &sptcpconnection);   // 动态绑定sptcpconnection的事件处理函数
+    void BindDynamicHandler(spTcpConnection &sptcpconnection); // 动态绑定sptcpconnection的事件处理函数
 
 private:
     std::mutex mutex_;
-    Socket tcpServerSocket_;        // 服务监听套接字描述符
-    Channel tcpServerChannel_;      // 连接Channel实例
-    EventLoop *mainLoop_;           // 事件池主逻辑控制实例
-    int connCount_;                 // 连接计数
-    EventLoopThreadPool eventLoopThreadPool;        // 多线程事件池
-    std::map<int, spTcpConnection> tcpConnList_;    // 套接字描述符->连接抽象类实例
-    std::map<std::string, std::map<std::string, Callback>> serviceHandlers_;    // 不同服务根据服务名及操作名注册的操作函数
+    Socket tcpServerSocket_;                                                 // 服务监听套接字描述符
+    Channel tcpServerChannel_;                                               // 连接Channel实例
+    EventLoop *mainLoop_;                                                    // 事件池主逻辑控制实例
+    int connCount_;                                                          // 连接计数
+    EventLoopThreadPool eventLoopThreadPool;                                 // 多线程事件池
+    std::map<int, spTcpConnection> tcpConnList_;                             // 套接字描述符->连接抽象类实例
+    std::map<std::string, std::map<std::string, Callback>> serviceHandlers_; // 不同服务根据服务名及操作名注册的操作函数
     void Setnonblocking(int fd);
-    void OnNewConnection();         // 处理新连接
-    void OnConnectionError();       // 处理连接错误，关闭套接字
-    void RemoveConnection(spTcpConnection &sptcpconnection);    // 连接清理，这里应该由EventLoop来执行，投递回主线程删除 OR 多线程加锁删除
-
+    void OnNewConnection();                                  // 处理新连接
+    void OnConnectionError();                                // 处理连接错误，关闭套接字
+    void RemoveConnection(spTcpConnection &sptcpconnection); // 连接清理，这里应该由EventLoop来执行，投递回主线程删除 OR 多线程加锁删除
 };
 
 const std::string TcpServer::ReadMessageHandler = "ReadMessageHandler";
@@ -78,9 +77,9 @@ TcpServer::TcpServer(EventLoop *loop, const int port, const int threadnum)
     tcpServerChannel_.SetFd(tcpServerSocket_.fd()); // TcpServer服务Channel绑定服务套接字tcpServerSocket_
     tcpServerChannel_.SetReadHandle(std::bind(&TcpServer::OnNewConnection, this));
     tcpServerChannel_.SetErrorHandle(std::bind(&TcpServer::OnConnectionError, this));
-    tcpServerChannel_.SetEvents(EPOLLIN | EPOLLET);     // 设置当前连接的监听事件
+    tcpServerChannel_.SetEvents(EPOLLIN | EPOLLET); // 设置当前连接的监听事件
     std::cout << "输出测试：TcpServer::TcpServer TcpServer服务套接字添加到MainEventLoop的epoll内进行监听，tcpServerSockfd：" << tcpServerSocket_.fd() << std::endl;
-    mainLoop_->AddChannelToPoller(&tcpServerChannel_);  // 主事件池添加当前Channel为监听对象
+    mainLoop_->AddChannelToPoller(&tcpServerChannel_); // 主事件池添加当前Channel为监听对象
 }
 
 TcpServer::~TcpServer()
@@ -90,12 +89,12 @@ TcpServer::~TcpServer()
 /*
  * 设置新连接处理函数
  * 可以重复注册同一个操作函数，实际为覆盖注册
- * 
+ *
  */
 void TcpServer::RegisterHandler(std::string serviceName, const std::string handlerType, const Callback &handlerFunc)
 {
     std::cout << "输出测试：TcpServer::RegisterHandler 服务：" << serviceName << " 开始注册函数，函数名：" << handlerType << std::endl;
-    if(serviceHandlers_.end() == serviceHandlers_.find(serviceName))
+    if (serviceHandlers_.end() == serviceHandlers_.find(serviceName))
     {
         // serviceName服务尚未注册过任何操作函数
         std::map<std::string, Callback> serviceHandlers;
@@ -106,11 +105,11 @@ void TcpServer::RegisterHandler(std::string serviceName, const std::string handl
 
 /*
  * 动态绑定sptcpconnection的事件处理函数
- * 
+ *
  */
 void TcpServer::BindDynamicHandler(spTcpConnection &sptcpconnection)
 {
-    std::cout << "输出测试：TcpServer::BindDynamicHandler 服务：" << std::endl;
+    std::cout << "输出测试：TcpServer::BindDynamicHandler " << std::endl;
     HttpRequestContext &httpRequestContext = sptcpconnection->GetReqestBuffer();
     std::string url = httpRequestContext.url;
     bool isDefaultHttpService = false;
@@ -121,10 +120,10 @@ void TcpServer::BindDynamicHandler(spTcpConnection &sptcpconnection)
     handlerName.clear();
     resourceUrl.clear();
     size_t nextFind = url.find('/', 1);
-    if(std::string::npos != nextFind)
+    if (std::string::npos != nextFind)
     {
         serviceName = url.substr(1, nextFind - 1);
-        if(serviceHandlers_.end() == serviceHandlers_.find(serviceName))
+        if (serviceHandlers_.end() == serviceHandlers_.find(serviceName))
         {
             // 服务名解析失败，请求的url无法解析为"/服务名/函数名"的格式，默认为网站式请求
             serviceName.clear();
@@ -135,13 +134,13 @@ void TcpServer::BindDynamicHandler(spTcpConnection &sptcpconnection)
             // 服务名解析成功
             url.erase(0, nextFind);
             nextFind = url.find('/', 1); // 可能有，也可能无
-            if(std::string::npos != nextFind)
+            if (std::string::npos != nextFind)
             {
                 handlerName = url.substr(1, nextFind - 1);
                 resourceUrl = url.substr(nextFind + 1, url.size() - nextFind);
             }
             nextFind = url.find('?', 1); // 可能有，也可能无
-            if(std::string::npos == nextFind)
+            if (std::string::npos == nextFind)
             {
                 handlerName = url.substr(1, nextFind - 1);
                 resourceUrl = url.substr(nextFind + 1, url.size() - nextFind);
@@ -151,7 +150,7 @@ void TcpServer::BindDynamicHandler(spTcpConnection &sptcpconnection)
                 handlerName = url.substr(1, url.size() - nextFind);
             }
             // 开始解析函数名
-            if(serviceHandlers_[serviceName].end() == serviceHandlers_[serviceName].find(handlerName))
+            if (serviceHandlers_[serviceName].end() == serviceHandlers_[serviceName].find(handlerName))
             {
                 // 函数名解析失败，本次连接所请求的函数未注册到serviceHandlers_
                 sptcpconnection->SetBindedHandler(false);
@@ -169,10 +168,10 @@ void TcpServer::BindDynamicHandler(spTcpConnection &sptcpconnection)
         // 请求的url无法解析为"/服务名/函数名"的格式，默认为网站式请求
         isDefaultHttpService = true;
     }
-    if(isDefaultHttpService)
+    if (isDefaultHttpService)
     {
         // 服务名解析失败，使用网站式处理方法
-        if(serviceHandlers_.end() == serviceHandlers_.find("HttpService"))
+        if (serviceHandlers_.end() == serviceHandlers_.find("HttpService"))
         {
             // TcpServer未注册HttpServer的任一服务处理函数
             sptcpconnection->SetBindedHandler(false);
@@ -180,8 +179,11 @@ void TcpServer::BindDynamicHandler(spTcpConnection &sptcpconnection)
         }
         // 默认使用网站资源处理方法
         serviceName = "HttpService";
-        sptcpconnection->SetReqHandler(serviceHandlers_[serviceName]["HttpProcess"]);
+        handlerName = "HttpProcess";
+        sptcpconnection->SetReqHandler(serviceHandlers_[serviceName][handlerName]);
     }
+    std::cout << "输出测试：TcpServer::BindDynamicHandler 解析出请求的服务：" << serviceName << "，sockfd：" << sptcpconnection->fd() << std::endl;
+    std::cout << "输出测试：TcpServer::BindDynamicHandler 解析出请求的函数：" << handlerName << "，sockfd：" << sptcpconnection->fd() << std::endl;
     sptcpconnection->SetMessaeCallback(serviceHandlers_[serviceName][TcpServer::ReadMessageHandler]);
     sptcpconnection->SetSendCompleteCallback(serviceHandlers_[serviceName][TcpServer::SendOverHandler]);
     sptcpconnection->SetCloseCallback(serviceHandlers_[serviceName][TcpServer::CloseConnHandler]);
@@ -191,7 +193,7 @@ void TcpServer::BindDynamicHandler(spTcpConnection &sptcpconnection)
 
 /*
  * 处理新连接
- * 
+ *
  */
 void TcpServer::OnNewConnection()
 {
@@ -229,7 +231,7 @@ void TcpServer::OnNewConnection()
 
 /*
  * 处理连接错误，关闭套接字
- * 
+ *
  */
 void TcpServer::OnConnectionError()
 {
@@ -239,7 +241,7 @@ void TcpServer::OnConnectionError()
 
 /*
  * 连接清理，这里应该由EventLoop来执行，投递回主线程删除 OR 多线程加锁删除
- * 
+ *
  */
 void TcpServer::RemoveConnection(spTcpConnection &sptcpconnection)
 {
@@ -251,7 +253,7 @@ void TcpServer::RemoveConnection(spTcpConnection &sptcpconnection)
 
 /*
  * 设置非阻塞IO
- * 
+ *
  */
 void TcpServer::Setnonblocking(int fd)
 {

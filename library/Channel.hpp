@@ -18,8 +18,8 @@
 
 #pragma once
 
-#include <functional>
 #include <iostream>
+#include <functional>
 #include <sys/epoll.h>
 
 class Channel
@@ -28,15 +28,15 @@ public:
     typedef std::function<void()> Callback;
     Channel();
     ~Channel();
-    void SetFd(int fd);     // 设置连接套接字fd
-    int GetFd() const;      // 获取连接套接字fd
-    void SetEvents(uint32_t events);    // 设置连接监听事件epoll_event
-    uint32_t GetEvents() const;         // 获取连接事件epoll_event
-    void SetReadHandle(const Callback &cb); // 设置读事件（EPOLLIN）处理函数
-    void SetWriteHandle(const Callback &cb);// 设置写事件（EPOLLOUT）处理函数
-    void SetErrorHandle(const Callback &cb);// 设置出错处理函数
-    void SetCloseHandle(const Callback &cb);// 设置连接关闭函数
-    void HandleEvent();     // 执行连接事件
+    void SetFd(int fd);                      // 设置连接套接字fd
+    int GetFd() const;                       // 获取连接套接字fd
+    void SetEvents(uint32_t events);         // 设置连接监听事件epoll_event
+    uint32_t GetEvents() const;              // 获取连接事件epoll_event
+    void SetReadHandle(const Callback &cb);  // 设置读事件（EPOLLIN）处理函数
+    void SetWriteHandle(const Callback &cb); // 设置写事件（EPOLLOUT）处理函数
+    void SetErrorHandle(const Callback &cb); // 设置出错处理函数
+    void SetCloseHandle(const Callback &cb); // 设置连接关闭函数
+    void HandleEvent();                      // 执行连接事件
 
 private:
     int fd_;                // 连接套接字描述符
@@ -45,7 +45,6 @@ private:
     Callback writeHandler;  // 写数据回调函数
     Callback errorHandler_; // 错误处理回调函数
     Callback closeHandler_; // 关闭连接回调函数
-
 };
 
 Channel::Channel()
@@ -59,7 +58,7 @@ Channel::~Channel()
 
 /*
  * 设置连接套接字fd
- * 
+ *
  */
 void Channel::SetFd(int fd)
 {
@@ -68,7 +67,7 @@ void Channel::SetFd(int fd)
 
 /*
  * 获取连接套接字fd
- * 
+ *
  */
 int Channel::GetFd() const
 {
@@ -77,7 +76,7 @@ int Channel::GetFd() const
 
 /*
  * 设置连接监听事件epoll_event
- * 
+ *
  */
 void Channel::SetEvents(uint32_t events)
 {
@@ -86,7 +85,7 @@ void Channel::SetEvents(uint32_t events)
 
 /*
  * 获取连接事件epoll_event
- * 
+ *
  */
 uint32_t Channel::GetEvents() const
 {
@@ -95,7 +94,7 @@ uint32_t Channel::GetEvents() const
 
 /*
  * 设置读事件（EPOLLIN）处理函数
- * 
+ *
  */
 void Channel::SetReadHandle(const Callback &cb)
 {
@@ -104,7 +103,7 @@ void Channel::SetReadHandle(const Callback &cb)
 
 /*
  * 设置写事件（EPOLLOUT）处理函数
- * 
+ *
  */
 void Channel::SetWriteHandle(const Callback &cb)
 {
@@ -113,7 +112,7 @@ void Channel::SetWriteHandle(const Callback &cb)
 
 /*
  * 设置出错处理函数
- * 
+ *
  */
 void Channel::SetErrorHandle(const Callback &cb)
 {
@@ -122,7 +121,7 @@ void Channel::SetErrorHandle(const Callback &cb)
 
 /*
  * 设置连接关闭函数
- * 
+ *
  */
 void Channel::SetCloseHandle(const Callback &cb)
 {
@@ -131,29 +130,33 @@ void Channel::SetCloseHandle(const Callback &cb)
 
 /*
  * 执行连接事件
- * 
+ *
  */
 void Channel::HandleEvent()
 {
-    if (events_ & EPOLLRDHUP) 
+    std::cout << "输出测试：Channel::HandleEvent 处理连接事件，sockfd：" << fd_ << std::endl;
+    if (events_ & EPOLLRDHUP)
     {
         // 客户端异常关闭事件
         std::cout << "Event EPOLLRDHUP" << std::endl;
         closeHandler_();
     }
-    else if (events_ & (EPOLLIN | EPOLLPRI)) 
+    else if (events_ & (EPOLLIN | EPOLLPRI))
     {
         // 读事件，客户端有数据或者正常关闭
+        std::cout << "输出测试：Channel::HandleEvent 读取客户端的请求数据，sockfd：" << fd_ << std::endl;
         readHandler_();
     }
-    else if (events_ & EPOLLOUT) 
+    else if (events_ & EPOLLOUT)
     {
         // 写事件，发送数据到客户端
+        std::cout << "输出测试：Channel::HandleEvent 客户端请求获取数据，sockfd：" << fd_ << std::endl;
         writeHandler();
     }
     else
     {
         // 连接错误
+        std::cout << "输出测试：Channel::HandleEvent 连接错误，sockfd：" << fd_ << std::endl;
         errorHandler_();
     }
 }

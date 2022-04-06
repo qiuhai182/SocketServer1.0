@@ -30,28 +30,24 @@ public:
     typedef std::vector<Channel *> ChannelList;
     EventLoop();
     ~EventLoop();
-    void loop();    // 循环监听事件并处理，以及执行functorList_上的任务
-    void AddChannelToPoller(Channel *pchannel);     // Poller监听Channel对应新连接
-    void RemoveChannelToPoller(Channel *pchannel);  // Poller移除Channel对应连接监听
-    void UpdateChannelToPoller(Channel *pchannel);  // Poller更改Channel对应连接事件信息
-    void Quit();    // 停止运行EventLoop事件循环
-    std::thread::id GetThreadId() const;    // 获取EventLoop所在线程ID
-    void AddTask(Functor functor);          // 添加任务到事件列表functorList_，唤醒工作线程
-    void WakeUp();      // 唤醒工作线程
-    void HandleRead();  // 唤醒线程的读取数据函数
-    void HandleError(); // 唤醒线程的错误处理函数
-    void ExecuteTask(); // 执行functorList_里的所有任务函数
+    std::thread::id GetThreadId() const;           // 获取EventLoop所在线程ID
+    void loop();                                   // 循环监听事件并处理，以及执行functorList_上的任务
+    void AddTask(Functor functor);                 // 添加任务到事件列表functorList_，唤醒工作线程
+    void WakeUp();                                 // 唤醒工作线程
+    void Quit();                                   // 停止运行EventLoop事件循环
+    void ExecuteTask();                            // 执行functorList_里的所有任务函数
+    void AddChannelToPoller(Channel *pchannel);    // Poller监听Channel对应新连接
+    void RemoveChannelToPoller(Channel *pchannel); // Poller移除Channel对应连接监听
+    void UpdateChannelToPoller(Channel *pchannel); // Poller更改Channel对应连接事件信息
 
 private:
-    std::mutex mutex_;
-    std::vector<Functor> functorList_;  // 任务列表
-    ChannelList activeChannelList_;     // 连接列表，存储当前批次事件的Channel实例
-    Poller poller_;                     // epoll封装类实例
-    bool quit_;                         // 停止循环监听事件标志位
-    std::thread::id tid_;               // 当前线程id
-    int wakeUpFd_;                      // 共享内存fd，用于唤醒线程
-    Channel wakeUpChannel_;
-
+    std::mutex mutex_;                 // 锁
+    std::vector<Functor> functorList_; // 任务列表
+    std::thread::id tid_;              // 当前线程id
+    ChannelList activeChannelList_;    // 连接列表，存储当前批次事件的Channel实例
+    Poller poller_;                    // epoll封装类实例
+    bool quit_;                        // 停止循环监听事件标志位
+    int wakeUpFd_;                     // 共享内存fd，用于唤醒线程
 };
 
 /*
@@ -76,15 +72,9 @@ EventLoop::EventLoop()
       quit_(true),
       tid_(std::this_thread::get_id()),
       mutex_(),
-      wakeUpFd_(CreateEventFd()),
-      wakeUpChannel_()
+      wakeUpFd_(CreateEventFd())
 {
-    // wakeUpChannel_.SetFd(wakeUpFd_);
-    // wakeUpChannel_.SetEvents(EPOLLIN | EPOLLET);
-    // wakeUpChannel_.SetReadHandle(std::bind(&EventLoop::HandleRead, this));
-    // wakeUpChannel_.SetErrorHandle(std::bind(&EventLoop::HandleError, this));
-    // AddChannelToPoller(&wakeUpChannel_);
-    std::cout << "输出测试：EventLoop::EventLoop 创建一个EventLoop" << std::endl; 
+    std::cout << "输出测试：EventLoop::EventLoop 创建一个EventLoop" << std::endl;
 }
 
 EventLoop::~EventLoop()
@@ -93,48 +83,30 @@ EventLoop::~EventLoop()
 }
 
 /*
- * 唤醒线程的读取数据函数
- * 
- */
-void EventLoop::HandleRead()
-{
-    std::cout << "输出测试：EventLoop::~EventLoop EventLoop::HandleRead " << std::endl;
-    uint64_t one = 1;
-    ssize_t n = read(wakeUpFd_, &one, sizeof one);
-}
-
-/*
- * 唤醒线程的错误处理函数
- * 
- */
-void EventLoop::HandleError()
-{
-    std::cout << "输出测试：EventLoop::HandleError " << std::endl;
-}
-
-/*
  * Poller监听Channel对应新连接
- * 
+ *
  */
 void EventLoop::AddChannelToPoller(Channel *pchannel)
 {
     std::cout << "输出测试：EventLoop::AddChannelToPoller 一个EventLoop添加连接监听，目标sockfd：" << pchannel->GetFd() << std::endl;
+    // std::lock_guard<std::mutex> lock(mutex_);
     poller_.AddChannel(pchannel);
 }
 
 /*
  * Poller移除Channel对应连接监听
- * 
+ *
  */
 void EventLoop::RemoveChannelToPoller(Channel *pchannel)
 {
     std::cout << "输出测试：EventLoop::RemoveChannelToPoller 一个EventLoop移除连接监听，目标sockfd：" << pchannel->GetFd() << std::endl;
+    std::lock_guard<std::mutex> lock(mutex_);
     poller_.RemoveChannel(pchannel);
 }
 
 /*
  * Poller更改Channel对应连接事件信息
- * 
+ *
  */
 void EventLoop::UpdateChannelToPoller(Channel *pchannel)
 {
@@ -144,7 +116,7 @@ void EventLoop::UpdateChannelToPoller(Channel *pchannel)
 
 /*
  * 停止运行EventLoop事件循环
- * 
+ *
  */
 void EventLoop::Quit()
 {
@@ -153,7 +125,7 @@ void EventLoop::Quit()
 
 /*
  * 获取EventLoop所在线程ID
- * 
+ *
  */
 std::thread::id EventLoop::GetThreadId() const
 {
@@ -168,29 +140,35 @@ void EventLoop::AddTask(Functor functor)
 {
     std::cout << "输出测试：EventLoop::AddTask 添加一个待执行函数到事件池等待执行" << std::endl;
     {
+        std::lock_guard<std::mutex> lock(mutex_);
         functorList_.push_back(functor);
     }
-    WakeUp();
 }
 
 /*
  * 唤醒线程
- * 实则为向eventfd生成的文件描述符wakeUpFd_
- * 写入唤醒标志值
- * 
+ * 实则为向eventfd生成的文件描述符wakeUpFd_写入唤醒标志值
+ * 此函数已废弃
+ *
  */
 void EventLoop::WakeUp()
 {
     std::cout << "输出测试：EventLoop::WakeUp " << std::endl;
     uint64_t one = 1;
+    std::lock_guard<std::mutex> lock(mutex_);
     ssize_t n = write(wakeUpFd_, (char *)(&one), sizeof one);
+    /* 读取唤醒标志方式：
+        uint64_t one = 1;
+        std::lock_guard<std::mutex> lock(mutex_);
+        ssize_t n = read(wakeUpFd_, &one, sizeof one);
+        */
 }
 
 /*
  * 执行functorList_里的所有任务函数
  * 此函数在loop所在线程执行任务
  * 若当前loop线程是子线程，则类似于多线程任务函数
- * 
+ *
  */
 void EventLoop::ExecuteTask()
 {
@@ -202,6 +180,7 @@ void EventLoop::ExecuteTask()
         functorlists.swap(functorList_);
     }
     // 执行拷贝的所有任务
+    std::cout << "输出测试：EventLoop即将执行所在线程的IO任务，任务数量：" << functorlists.size() << std::endl;
     for (Functor &functor : functorlists)
     {
         std::cout << "输出测试：EventLoop即将执行一个IO任务" << std::endl;
@@ -209,7 +188,7 @@ void EventLoop::ExecuteTask()
         {
             functor();
         }
-        catch(std::bad_function_call)
+        catch (std::bad_function_call)
         {
             std::cout << "输出测试：EventLoop执行一个IO任务报错：std::bad_function_call，函数调用失败" << std::endl;
         }
@@ -222,7 +201,7 @@ void EventLoop::ExecuteTask()
  * 循环调用Poller封装poll函数，获取一批次新连接
  * 调用每一个连接对应的Channel的HandleEvent函数，执行动态绑定的处理函数
  * 并执行functorList_里的所有任务
- * 
+ *
  */
 void EventLoop::loop()
 {
@@ -243,6 +222,3 @@ void EventLoop::loop()
     }
     std::cout << "输出测试：EventLoop::loop 一个事件池EventLoop退出" << std::endl;
 }
-
-
-

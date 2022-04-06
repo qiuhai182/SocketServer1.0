@@ -37,19 +37,19 @@ public:
     typedef std::function<void()> Task;
     ThreadPool(int threadnum = 0);
     ~ThreadPool();
-    void Start();           // 标志为运行状态，创建threadNum_个子线程作为工作线程并启动线程
-    void Stop();            // 标志为停止运行状态，唤醒所有线程，线程分离异步运行，清空线程池
-    void AddTask(Task task);// 添加一个任务到任务列表taskQueue_，随机唤醒一个工作线程执行一个任务
-    void ThreadFunc();      // 线程回调函数，单次遍历，加锁取出taskQueue_的一个任务并执行
-    int GetThreadNum();     // 获取工作线程数量
+    void Start();            // 标志为运行状态，创建threadNum_个子线程作为工作线程并启动线程
+    void Stop();             // 标志为停止运行状态，唤醒所有线程，线程分离异步运行，清空线程池
+    void AddTask(Task task); // 添加一个任务到任务列表taskQueue_，随机唤醒一个工作线程执行一个任务
+    void ThreadFunc();       // 线程回调函数，单次遍历，加锁取出taskQueue_的一个任务并执行
+    int GetThreadNum();      // 获取工作线程数量
 
 private:
-    bool started_;      // 线程池运行状态
-    int threadNum_;     // 线程池控制工作线程数量
+    bool started_;  // 线程池运行状态
+    int threadNum_; // 线程池控制工作线程数量
     std::mutex mutex_;
     std::condition_variable condition_;
     std::vector<std::thread *> threadList_; // 工作线程列表
-    std::queue<Task> taskQueue_;    // 任务队列，由线程池及其子工作线程间共享，线程池负责添加，工作线程执行
+    std::queue<Task> taskQueue_;            // 任务队列，由线程池及其子工作线程间共享，线程池负责添加，工作线程执行
 };
 
 ThreadPool::ThreadPool(int threadnum)
@@ -70,7 +70,7 @@ ThreadPool::~ThreadPool()
     {
         threadList_[i]->join();
     }
-    for (int i = 0; i < threadNum_; ++i) 
+    for (int i = 0; i < threadNum_; ++i)
     {
         delete threadList_[i];
     }
@@ -80,7 +80,7 @@ ThreadPool::~ThreadPool()
 /*
  * 标志为运行状态，创建threadNum_个子线程作为工作线程
  * 堆内创建线程，线程创建直接运行
- * 
+ *
  */
 void ThreadPool::Start()
 {
@@ -97,7 +97,7 @@ void ThreadPool::Start()
 
 /*
  * 标志为停止运行状态，唤醒所有线程，线程分离异步运行，清空线程池
- * 
+ *
  */
 void ThreadPool::Stop()
 {
@@ -116,7 +116,7 @@ void ThreadPool::Stop()
 /*
  * 添加一个任务到任务列表taskQueue_
  * 随机唤醒一个工作线程执行一个任务
- * 
+ *
  */
 void ThreadPool::AddTask(Task task)
 {
@@ -130,7 +130,7 @@ void ThreadPool::AddTask(Task task)
 /*
  * 线程回调函数，在每个工作线程内运行的回调函数
  * 单次遍历，加锁取出taskQueue_的一个任务并执行
- * 
+ *
  */
 void ThreadPool::ThreadFunc()
 {
@@ -169,7 +169,6 @@ void ThreadPool::ThreadFunc()
             catch (std::bad_alloc &ba)
             {
                 std::cerr << "bad_alloc错误捕获于函数ThreadPool::ThreadFunc，报错: " << ba.what() << '\n';
-                while (1);
             }
         }
     }
@@ -181,7 +180,7 @@ void ThreadPool::ThreadFunc()
 
 /*
  * 获取工作线程数量
- * 
+ *
  */
 int ThreadPool::GetThreadNum()
 {
