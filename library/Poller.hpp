@@ -21,13 +21,12 @@ public:
     Poller();
     ~Poller();
     std::mutex mutex_;
-    int pollFd_;    // epoll监听描述符
-    std::map<int, Channel *> channelMap_;       // 套接字描述符->Channel实例，存储所有连接Channel实例
-    void AddChannel(Channel *pchannel);         // 添加事件，EPOLL_CTL_ADD
-    void RemoveChannel(Channel *pchannel);      // 移除事件，EPOLL_CTL_DEL
-    void UpdateChannel(Channel *pchannel);      // 修改事件，EPOLL_CTL_MOD
-    void poll(ChannelList &activeChannelList);  // 获取一批次新事件
-
+    int pollFd_;                               // epoll监听描述符
+    std::map<int, Channel *> channelMap_;      // 套接字描述符->Channel实例，存储所有连接Channel实例
+    void AddChannel(Channel *pchannel);        // 添加事件，EPOLL_CTL_ADD
+    void RemoveChannel(Channel *pchannel);     // 移除事件，EPOLL_CTL_DEL
+    void UpdateChannel(Channel *pchannel);     // 修改事件，EPOLL_CTL_MOD
+    void poll(ChannelList &activeChannelList); // 获取一批次新事件
 };
 
 Poller::Poller()
@@ -51,7 +50,7 @@ Poller::~Poller()
 
 /*
  * 向pollFd_添加监听Channel对应的新连接
- * 
+ *
  */
 void Poller::AddChannel(Channel *pchannel)
 {
@@ -74,7 +73,7 @@ void Poller::AddChannel(Channel *pchannel)
 
 /*
  * 移除pollFd_里Channel对应的连接的监听
- * 
+ *
  */
 void Poller::RemoveChannel(Channel *pchannel)
 {
@@ -90,6 +89,7 @@ void Poller::RemoveChannel(Channel *pchannel)
     }
     // epoll添加客户端连接监听
     if (epoll_ctl(pollFd_, EPOLL_CTL_DEL, fd, &ev) == -1)
+    // if (epoll_ctl(pollFd_, EPOLL_CTL_DEL, fd, NULL) == -1)
     {
         perror("epoll del error");
         exit(1);
@@ -98,7 +98,7 @@ void Poller::RemoveChannel(Channel *pchannel)
 
 /*
  * 更新pollFd_里Channel对应监听事件的信息
- * 
+ *
  */
 void Poller::UpdateChannel(Channel *pchannel)
 {
@@ -118,7 +118,7 @@ void Poller::UpdateChannel(Channel *pchannel)
 /*
  * 封装epoll_wait函数，获取一批次新任务
  * 由事件池获取新任务时调用
- * 
+ *
  */
 void Poller::poll(ChannelList &activeChannelList)
 {
@@ -129,8 +129,9 @@ void Poller::poll(ChannelList &activeChannelList)
     {
         perror("epoll wait error");
     }
-    if(nfds)
-        std::cout << std::endl << "输出测试：Poller::poll Poller监听到" << nfds << "个已连接客户端的事件待处理" << std::endl;
+    if (nfds)
+        std::cout << std::endl
+                  << "输出测试：Poller::poll Poller监听到" << nfds << "个已连接客户端的事件待处理" << std::endl;
     // 遍历获取每个网络请求事件
     for (int i = 0; i < nfds; ++i)
     {
