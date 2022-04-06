@@ -487,10 +487,10 @@ void TcpConnection::HandleClose()
         spTcpConnection sptcpconn = shared_from_this();
         if (BindedHandler_)
             closeCallback_(sptcpconn);
-        disConnected_ = true;
         std::cout << "输出测试：TcpConnection::HandleClose 向loop_添加TcpConnection::connectioncleanup_函数，sockfd：" << fd_ << std::endl;
         // 在TcpServer内删除指向此TcpConnection的智能指针，在所有多线程任务都执行完后，没有指向此的智能指针时将进行析构
         loop_->AddTask(std::bind(connectioncleanup_, sptcpconn));
+        disConnected_ = true;
     }
 }
 
