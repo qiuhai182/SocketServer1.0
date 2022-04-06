@@ -9,18 +9,18 @@ int main(int argc, char *argv[])
 {
     signal(SIGUSR1, sighandler1);
     signal(SIGUSR2, sighandler2);
-    signal(SIGINT, sighandler2);// SIG_IGN = Ctrl+C
-    signal(SIGPIPE, SIG_IGN);   // 忽略信号的处理程序
+    signal(SIGINT, sighandler2); // SIG_IGN = Ctrl+C
+    signal(SIGPIPE, SIG_IGN);    // 忽略信号的处理程序
     // 默认初始化参数
-    int port = 8005;            // 服务端口
-    int iothreadnum = 0;        // EventLoop工作线程数量
-    int workerthreadnum = 4;    // 线程池工作线程数量
+    int port = 8005;          // 服务端口
+    int iothreadnum = 20;     // EventLoop工作线程数量
+    int workerthreadnum = 20; // 线程池工作线程数量
     if (argc == 4)
     {
         // 启动初始化参数
         port = atoi(argv[1]);
-        iothreadnum = atoi(argv[2]);        // EventLoop工作线程数量
-        workerthreadnum = atoi(argv[3]);    // 线程池工作线程数量
+        iothreadnum = atoi(argv[2]);     // EventLoop工作线程数量
+        workerthreadnum = atoi(argv[3]); // 线程池工作线程数量
     }
 
     EventLoop loop;
