@@ -26,13 +26,13 @@
 class EventLoop
 {
 public:
-    typedef std::function<void()> Functor;
+    typedef std::shared_ptr<std::function<void()>> Callback;
     typedef std::vector<Channel *> ChannelList;
     EventLoop();
     ~EventLoop();
     std::thread::id GetThreadId() const;           // 获取EventLoop所在线程ID
     void loop();                                   // 循环监听事件并处理，以及执行functorList_上的任务
-    void AddTask(Functor functor);                 // 添加任务到事件列表functorList_，唤醒工作线程
+    void AddTask(Callback functor);                // 添加任务到事件列表functorList_，唤醒工作线程
     void WakeUp();                                 // 唤醒工作线程
     void Quit();                                   // 停止运行EventLoop事件循环
     void ExecuteTask();                            // 执行functorList_里的所有任务函数
@@ -42,7 +42,7 @@ public:
 
 private:
     std::mutex mutex_;                 // 锁
-    std::vector<Functor> functorList_; // 任务列表
+    std::vector<Callback> functorList_;// 任务列表
     std::thread::id tid_;              // 当前线程id
     ChannelList activeChannelList_;    // 连接列表，存储当前批次事件的Channel实例
     Poller poller_;                    // epoll封装类实例
@@ -136,7 +136,7 @@ std::thread::id EventLoop::GetThreadId() const
  * EventLoop添加任务到functorList_
  * 并唤醒工作线程
  */
-void EventLoop::AddTask(Functor functor)
+void EventLoop::AddTask(Callback functor)
 {
     std::cout << "输出测试：EventLoop::AddTask 添加一个待执行函数到事件池等待执行" << std::endl;
     {
@@ -174,19 +174,19 @@ void EventLoop::ExecuteTask()
 {
     std::cout << "输出测试：EventLoop::ExecuteTask " << std::endl;
     // 拷贝任务列表并使任务列表置空
-    std::vector<Functor> functorlists;
+    std::vector<Callback> functorlists;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         functorlists.swap(functorList_);
     }
     // 执行拷贝的所有任务
     std::cout << "输出测试：EventLoop即将执行所在线程的IO任务，任务数量：" << functorlists.size() << std::endl;
-    for (Functor &functor : functorlists)
+    for (Callback &functor : functorlists)
     {
         std::cout << "输出测试：EventLoop即将执行一个IO任务" << std::endl;
         try
         {
-            functor();
+            (*(functor.get()))();
         }
         catch (std::bad_function_call)
         {

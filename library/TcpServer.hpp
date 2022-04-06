@@ -31,6 +31,7 @@ class TcpServer
 {
 public:
     typedef std::shared_ptr<TcpConnection> spTcpConnection;
+    typedef std::function<void()> ChannelCallback;
     typedef std::function<void(spTcpConnection &)> Callback;
     TcpServer(EventLoop *loop, const int port, const int threadnum = 0);
     ~TcpServer();
@@ -39,7 +40,7 @@ public:
     static const std::string CloseConnHandler;
     static const std::string ErrorConnHandler;
     // 高层服务向tcpServer注册传递给底层connection->channel的处理函数
-    void RegisterHandler(std::string serviceName, const std::string handlerType, const Callback &handlerFunc);
+    void RegisterHandler(std::string serviceName, const std::string handlerType, Callback *handlerFunc);
     void BindDynamicHandler(spTcpConnection &sptcpconnection); // 动态绑定sptcpconnection的事件处理函数
 
 private:
@@ -50,11 +51,16 @@ private:
     int connCount_;                                                          // 连接计数
     EventLoopThreadPool eventLoopThreadPool;                                 // 多线程事件池
     std::map<int, spTcpConnection> tcpConnList_;                             // 套接字描述符->连接抽象类实例
-    std::map<std::string, std::map<std::string, Callback>> serviceHandlers_; // 不同服务根据服务名及操作名注册的操作函数
+    std::map<std::string, std::map<std::string, Callback*>> serviceHandlers_;// 不同服务根据服务名及操作名注册的操作函数
     void Setnonblocking(int fd);
     void OnNewConnection();                                  // 处理新连接
     void OnConnectionError();                                // 处理连接错误，关闭套接字
     void RemoveConnection(spTcpConnection &sptcpconnection); // 连接清理，这里应该由EventLoop来执行，投递回主线程删除 OR 多线程加锁删除
+    ChannelCallback onNewConnCallback_;
+    ChannelCallback onErrConnCallback_;
+    Callback onBindConnCallback_;
+    Callback onRemoveConnCallback_;
+
 };
 
 const std::string TcpServer::ReadMessageHandler = "ReadMessageHandler";
@@ -67,7 +73,11 @@ TcpServer::TcpServer(EventLoop *loop, const int port, const int threadnum)
       mainLoop_(loop),
       tcpServerChannel_(),
       connCount_(0),
-      eventLoopThreadPool(loop, threadnum)
+      eventLoopThreadPool(loop, threadnum),
+      onNewConnCallback_(std::bind(&TcpServer::OnNewConnection, this)),
+      onErrConnCallback_(std::bind(&TcpServer::OnConnectionError, this)),
+      onBindConnCallback_(std::bind(&TcpServer::BindDynamicHandler, this, std::placeholders::_1)),
+      onRemoveConnCallback_(std::bind(&TcpServer::RemoveConnection, this, std::placeholders::_1))
 {
     std::cout << "输出测试：TcpServer::TcpServer 创建一个监听端口：" << port << "，io线程数为：" << threadnum << "的TcpServer监听" << std::endl;
     tcpServerSocket_.SetReuseAddr();
@@ -75,8 +85,8 @@ TcpServer::TcpServer(EventLoop *loop, const int port, const int threadnum)
     tcpServerSocket_.Listen();
     tcpServerSocket_.SetNonblocking();
     tcpServerChannel_.SetFd(tcpServerSocket_.fd()); // TcpServer服务Channel绑定服务套接字tcpServerSocket_
-    tcpServerChannel_.SetReadHandle(std::bind(&TcpServer::OnNewConnection, this));
-    tcpServerChannel_.SetErrorHandle(std::bind(&TcpServer::OnConnectionError, this));
+    tcpServerChannel_.SetReadHandle(&onNewConnCallback_);
+    tcpServerChannel_.SetErrorHandle(&onErrConnCallback_);
     tcpServerChannel_.SetEvents(EPOLLIN | EPOLLET); // 设置当前连接的监听事件
     std::cout << "输出测试：TcpServer::TcpServer TcpServer服务套接字添加到MainEventLoop的epoll内进行监听，tcpServerSockfd：" << tcpServerSocket_.fd() << std::endl;
     mainLoop_->AddChannelToPoller(&tcpServerChannel_); // 主事件池添加当前Channel为监听对象
@@ -91,13 +101,13 @@ TcpServer::~TcpServer()
  * 可以重复注册同一个操作函数，实际为覆盖注册
  *
  */
-void TcpServer::RegisterHandler(std::string serviceName, const std::string handlerType, const Callback &handlerFunc)
+void TcpServer::RegisterHandler(std::string serviceName, const std::string handlerType, Callback *handlerFunc)
 {
     std::cout << "输出测试：TcpServer::RegisterHandler 服务：" << serviceName << " 开始注册函数，函数名：" << handlerType << std::endl;
     if (serviceHandlers_.end() == serviceHandlers_.find(serviceName))
     {
         // serviceName服务尚未注册过任何操作函数
-        std::map<std::string, Callback> serviceHandlers;
+        std::map<std::string, Callback*> serviceHandlers;
         serviceHandlers_[serviceName] = std::move(serviceHandlers);
     }
     serviceHandlers_[serviceName][handlerType] = handlerFunc;
@@ -218,8 +228,8 @@ void TcpServer::OnNewConnection()
         EventLoop *loop = eventLoopThreadPool.GetNextLoop();
         // 创建连接抽象类实例TcpConnection，创建时clientfd已有请求数据待读取
         spTcpConnection sptcpconnection = std::make_shared<TcpConnection>(loop, clientfd, clientaddr);
-        sptcpconnection->SetDynamicHandler(std::bind(&TcpServer::BindDynamicHandler, this, std::placeholders::_1));
-        sptcpconnection->SetConnectionCleanUp(std::bind(&TcpServer::RemoveConnection, this, std::placeholders::_1));
+        sptcpconnection->SetDynamicHandler(&onBindConnCallback_);
+        sptcpconnection->SetConnectionCleanUp(&onRemoveConnCallback_);
         {
             // 无名作用域
             std::lock_guard<std::mutex> lock(mutex_);

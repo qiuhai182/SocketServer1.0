@@ -67,6 +67,7 @@ public:
 
 private:
     typedef std::shared_ptr<TcpConnection> spTcpConnection;
+    typedef std::function<void(spTcpConnection &)> Callback;
     std::string serviceName_;
     std::mutex mutex_;
     int workThreadNum_;
@@ -83,6 +84,12 @@ private:
     void HandleSendComplete(spTcpConnection &sptcpconn);                        // HttpServer模式数据处理发送客户端完毕
     void HandleClose(spTcpConnection &sptcpconn);                               // HttpServer模式处理连接断开
     void HandleError(spTcpConnection &sptcpconn);                               // HttpServer模式处理连接出错
+    Callback onReadHandler_;
+    Callback onSendOverHandler_;
+    Callback onCloseConnHandler_;
+    Callback onErrorConnHandler_;
+    Callback onHttpProcess_;
+
 };
 
 HttpServer::HttpServer(EventLoop *loop, const int workThreadNum, ThreadPool *threadPool, const int loopThreadNum, const int port, TcpServer *shareTcpServer)
@@ -91,14 +98,19 @@ HttpServer::HttpServer(EventLoop *loop, const int workThreadNum, ThreadPool *thr
       workThreadNum_(workThreadNum),
       tcpServerPort_(port),
       threadpool_(threadPool ? threadPool : (workThreadNum_ > 0 ? new ThreadPool(workThreadNum_) : NULL)),
-      tcpserver_(shareTcpServer ? shareTcpServer : new TcpServer(loop, tcpServerPort_, loopThreadNum))
+      tcpserver_(shareTcpServer ? shareTcpServer : new TcpServer(loop, tcpServerPort_, loopThreadNum)),
+      onReadHandler_(std::bind(&HttpServer::HandleMessage, this, std::placeholders::_1)),
+      onSendOverHandler_(std::bind(&HttpServer::HandleSendComplete, this, std::placeholders::_1)),
+      onCloseConnHandler_(std::bind(&HttpServer::HandleClose, this, std::placeholders::_1)),
+      onErrorConnHandler_(std::bind(&HttpServer::HandleError, this, std::placeholders::_1)),
+      onHttpProcess_(std::bind(&HttpServer::HttpProcess, this, std::placeholders::_1))
 {
     // 基于TcpServer设置HttpServer服务函数，在TcpServer内触发调用HttpServer的成员函数，类似于信号槽机制
-    tcpserver_->RegisterHandler(serviceName_, TcpServer::ReadMessageHandler, std::bind(&HttpServer::HandleMessage, this, std::placeholders::_1));
-    tcpserver_->RegisterHandler(serviceName_, TcpServer::SendOverHandler, std::bind(&HttpServer::HandleSendComplete, this, std::placeholders::_1));
-    tcpserver_->RegisterHandler(serviceName_, TcpServer::CloseConnHandler, std::bind(&HttpServer::HandleClose, this, std::placeholders::_1));
-    tcpserver_->RegisterHandler(serviceName_, TcpServer::ErrorConnHandler, std::bind(&HttpServer::HandleError, this, std::placeholders::_1));
-    tcpserver_->RegisterHandler(serviceName_, "HttpProcess", std::bind(&HttpServer::HttpProcess, this, std::placeholders::_1));
+    tcpserver_->RegisterHandler(serviceName_, TcpServer::ReadMessageHandler, &onReadHandler_);
+    tcpserver_->RegisterHandler(serviceName_, TcpServer::SendOverHandler, &onSendOverHandler_);
+    tcpserver_->RegisterHandler(serviceName_, TcpServer::CloseConnHandler, &onCloseConnHandler_);
+    tcpserver_->RegisterHandler(serviceName_, TcpServer::ErrorConnHandler, &onErrorConnHandler_);
+    tcpserver_->RegisterHandler(serviceName_, "HttpProcess", &onHttpProcess_);
     if (tcpServerPort_)
         threadpool_->Start();
 }
@@ -147,7 +159,7 @@ void HttpServer::HandleMessage(spTcpConnection &sptcpconn)
                                 {
                                     try
                                     {
-                                        sptcpconn->GetReqHandler()(sptcpconn);
+                                        (*sptcpconn->GetReqHandler())(sptcpconn);
                                     }
                                     catch(std::bad_function_call)
                                     {
@@ -162,7 +174,7 @@ void HttpServer::HandleMessage(spTcpConnection &sptcpconn)
         // 没有开启线程池，执行动态绑定的处理函数
         try
         {
-            sptcpconn->GetReqHandler()(sptcpconn);
+            (*sptcpconn->GetReqHandler())(sptcpconn);
         }
         catch (std::bad_function_call)
         {

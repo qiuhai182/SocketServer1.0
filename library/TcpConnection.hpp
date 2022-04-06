@@ -54,7 +54,8 @@ class TcpConnection : public std::enable_shared_from_this<TcpConnection>
 { // 允许安全使用shared_ptr
 public:
     typedef std::shared_ptr<TcpConnection> spTcpConnection;  // 指向TcpConnection的智能指针
-    typedef std::function<void(spTcpConnection &)> Callback; // 回调函数
+    typedef std::function<void()> ChannelCallback;
+    typedef std::function<void(spTcpConnection &)> *Callback; // 回调函数
     TcpConnection(EventLoop *loop, int fd, const struct sockaddr_in &clientaddr);
     ~TcpConnection();
     int fd() const { return fd_; }               // 获取套接字描述符
@@ -130,6 +131,11 @@ private:
     Callback reqHandler_;                     // 本次连接事件请求的处理函数，每次请求都会重置
     Callback BindDynamicHandler_;             // 向TcpServer申请动态绑定函数，此函数独属于TcpServer
     Callback connectioncleanup_;              // 连接清理函数，此函数独属于TcpServer
+    ChannelCallback onReadConnCallback_;
+    ChannelCallback onWriteConnCallback_;
+    ChannelCallback onErrConnCallback_;
+    ChannelCallback onCloseConnCallback_;
+
 };
 
 TcpConnection::TcpConnection(EventLoop *loop, int fd, const struct sockaddr_in &clientaddr)
@@ -147,15 +153,20 @@ TcpConnection::TcpConnection(EventLoop *loop, int fd, const struct sockaddr_in &
       bufferOut_(),
       keepalive_(true),
       reqHealthy_(false),
-      BindedHandler_(false)
+      BindedHandler_(false),
+      onReadConnCallback_(std::bind(&TcpConnection::HandleRead, this)),
+      onWriteConnCallback_(std::bind(&TcpConnection::HandleWrite, this)),
+      onErrConnCallback_(std::bind(&TcpConnection::HandleClose, this)),
+      onCloseConnCallback_(std::bind(&TcpConnection::HandleError, this))
 {
     // 基于Channel设置TcpConnection的服务函数，在Channel内触发调用TcpConnection的成员函数，类似于信号槽机制
     spChannel_->SetFd(fd_);
     spChannel_->SetEvents(EPOLLIN | EPOLLET);
-    spChannel_->SetReadHandle(std::bind(&TcpConnection::HandleRead, this));
-    spChannel_->SetWriteHandle(std::bind(&TcpConnection::HandleWrite, this));
-    spChannel_->SetCloseHandle(std::bind(&TcpConnection::HandleClose, this));
-    spChannel_->SetErrorHandle(std::bind(&TcpConnection::HandleError, this));
+    spChannel_->SetReadHandle(&onReadConnCallback_);
+    spChannel_->SetWriteHandle(&onWriteConnCallback_);
+    spChannel_->SetCloseHandle(&onErrConnCallback_);
+    spChannel_->SetErrorHandle(&onCloseConnCallback_);
+
 }
 
 TcpConnection::~TcpConnection()
@@ -191,15 +202,15 @@ void TcpConnection::HandleRead()
             bool preBindedHandler_ = BindedHandler_;
             // 在此向TcpServer请求函数绑定，需要先重置BindedHandler_为false以免复用连接时错误
             BindedHandler_ = false;
-            BindDynamicHandler_(sptcpconn);
+            (*BindDynamicHandler_)(sptcpconn);
             if (!BindedHandler_)
             {
                 std::cout << "输出测试：TcpConnection::HandleRead 动态绑定函数失败，处理错误，sockfd：" << fd_ << std::endl;
                 if (preBindedHandler_)
                 {
                     spTcpConnection sptcpconn = shared_from_this();
-                    errorCallback_(sptcpconn);
-                    closeCallback_(sptcpconn);
+                    (*errorCallback_)(sptcpconn);
+                    (*closeCallback_)(sptcpconn);
                 }
                 HandleError();
             }
@@ -217,7 +228,7 @@ void TcpConnection::HandleRead()
                 }
                 std::cout << "输出测试：TcpConnection::HandleRead 回调高级服务处理，sockfd：" << fd_ << std::endl;
                 // 执行动态绑定的上层处理函数messageCallback_处理读取到的缓冲区数据bufferIn_
-                messageCallback_(sptcpconn);
+                (*messageCallback_)(sptcpconn);
             }
         }
         else
@@ -245,7 +256,9 @@ void TcpConnection::HandleRead()
 void TcpConnection::AddChannelToLoop()
 {
     std::cout << "输出测试：TcpConnection::AddChannelToLoop sockfd：" << fd_ << std::endl;
-    loop_->AddTask(std::bind(&EventLoop::AddChannelToPoller, loop_, spChannel_.get()));
+    std::function<void()> task = std::bind(&EventLoop::AddChannelToPoller, loop_, spChannel_.get());
+    std::shared_ptr<std::function<void()>> spTask = std::make_shared<std::function<void()>>(task);
+    loop_->AddTask(spTask);
     ChannelAdded_ = true;
 }
 
@@ -299,7 +312,9 @@ void TcpConnection::SendBufferOut()
         // 跨线程调用,加入IO线程的任务队列，唤醒
         spTcpConnection sptcpconn = shared_from_this();
         std::cout << "输出测试：TcpConnection::SendBufferOut 向loop_添加TcpConnection::SendInLoop函数，socket：" << fd_ << std::endl;
-        loop_->AddTask(std::bind(&TcpConnection::SendInLoop, sptcpconn));
+        std::function<void()> task = std::bind(&TcpConnection::SendInLoop, sptcpconn);
+        std::shared_ptr<std::function<void()>> spTask = std::make_shared<std::function<void()>>(task);
+        loop_->AddTask(spTask);
     }
 }
 
@@ -332,7 +347,7 @@ void TcpConnection::SendInLoop()
             if (BindedHandler_)
             {
                 spTcpConnection sptcpconn = shared_from_this();
-                sendcompleteCallback_(sptcpconn);
+                (*sendcompleteCallback_)(sptcpconn);
             }
             // 已设置半关闭标志，连接即将关闭
             if (halfClose_)
@@ -367,7 +382,9 @@ void TcpConnection::Shutdown()
         // 加入IO线程的任务队列，唤醒
         spTcpConnection sptcpconn = shared_from_this();
         std::cout << "输出测试：TcpConnection::Shutdown 向loop_添加TcpConnection::HandleClose函数" << std::endl;
-        loop_->AddTask(std::bind(&TcpConnection::HandleClose, sptcpconn));
+        std::function<void()> task = std::bind(&TcpConnection::HandleClose, sptcpconn);
+        std::shared_ptr<std::function<void()>> spTask = std::make_shared<std::function<void()>>(task);
+        loop_->AddTask(spTask);
     }
 }
 
@@ -398,7 +415,7 @@ void TcpConnection::HandleWrite()
             // 数据已发完
             spChannel_->SetEvents(events & (~EPOLLOUT));
             spTcpConnection sptcpconn = shared_from_this();
-            sendcompleteCallback_(sptcpconn);
+            (*sendcompleteCallback_)(sptcpconn);
             // 发送完毕，如果是半关闭状态，则可以close了
             if (halfClose_)
                 HandleClose();
@@ -451,7 +468,7 @@ void TcpConnection::HandleError()
         // 连接尚未关闭，调用可调用的errorCallback_，并关闭连接
         std::cout << "输出测试：TcpConnection错误处理，socket：" << fd_ << std::endl;
         spTcpConnection sptcpconn = shared_from_this();
-        errorCallback_(sptcpconn);
+        (*errorCallback_)(sptcpconn);
         HandleClose();
     }
 }
@@ -479,17 +496,19 @@ void TcpConnection::HandleClose()
         if (bufferIn_.length() > 0)
         {
             spTcpConnection sptcpconn = shared_from_this();
-            messageCallback_(sptcpconn);
+            (*messageCallback_)(sptcpconn);
         }
     }
     else
     {
         spTcpConnection sptcpconn = shared_from_this();
         if (BindedHandler_)
-            closeCallback_(sptcpconn);
+            (*closeCallback_)(sptcpconn);
         std::cout << "输出测试：TcpConnection::HandleClose 向loop_添加TcpConnection::connectioncleanup_函数，sockfd：" << fd_ << std::endl;
         // 在TcpServer内删除指向此TcpConnection的智能指针，在所有多线程任务都执行完后，没有指向此的智能指针时将进行析构
-        loop_->AddTask(std::bind(connectioncleanup_, sptcpconn));
+        std::function<void()> task = std::bind(*connectioncleanup_, sptcpconn);
+        std::shared_ptr<std::function<void()>> spTask = std::make_shared<std::function<void()>>(task);
+        loop_->AddTask(spTask);
         disConnected_ = true;
     }
 }
