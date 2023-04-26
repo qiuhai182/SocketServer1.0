@@ -50,6 +50,7 @@ private:
     std::condition_variable condition_;
     std::vector<std::thread *> threadList_; // 工作线程列表
     std::queue<Task> taskQueue_;            // 任务队列，由线程池及其子工作线程间共享，线程池负责添加，工作线程执行
+
 };
 
 ThreadPool::ThreadPool(int threadnum)
@@ -60,11 +61,12 @@ ThreadPool::ThreadPool(int threadnum)
       mutex_(),
       condition_()
 {
+    LOG(LoggerLevel::INFO, "%s\n", "函数触发");
 }
 
 ThreadPool::~ThreadPool()
 {
-    std::cout << "析构线程池" << std::endl;
+    LOG(LoggerLevel::INFO, "%s\n", "函数触发");
     Stop();
     for (int i = 0; i < threadNum_; ++i)
     {
@@ -84,6 +86,7 @@ ThreadPool::~ThreadPool()
  */
 void ThreadPool::Start()
 {
+    LOG(LoggerLevel::INFO, "%s\n", "函数触发");
     if (threadNum_ > 0)
     {
         started_ = true;
@@ -101,11 +104,12 @@ void ThreadPool::Start()
  */
 void ThreadPool::Stop()
 {
+    LOG(LoggerLevel::INFO, "%s\n", "函数触发");
     started_ = false;
     condition_.notify_all();
     for (auto i : threadList_)
     {
-        std::cout << "启动并分离线程：" << i << std::endl;
+        LOG(LoggerLevel::INFO, "启动并分离线程：%d\n", i);
         // 线程分离，异步线程
         i->detach();
     }
@@ -120,6 +124,7 @@ void ThreadPool::Stop()
  */
 void ThreadPool::AddTask(Task task)
 {
+    LOG(LoggerLevel::INFO, "%s\n", "函数触发");
     {
         std::lock_guard<std::mutex> lock(mutex_);
         taskQueue_.push(task);
@@ -134,10 +139,12 @@ void ThreadPool::AddTask(Task task)
  */
 void ThreadPool::ThreadFunc()
 {
+    LOG(LoggerLevel::INFO, "%s\n", "函数触发");
     std::thread::id tid = std::this_thread::get_id();
     std::stringstream sin;
     sin << tid;
-    std::cout << "线程池工作线程: " << tid << " 启动" << std::endl;
+    LOG(LoggerLevel::INFO, "启动线程池工作线程：%d\n", tid);
+    // std::cout << "ThreadPool::ThreadFunc 线程池工作线程: " << tid << " 启动" << std::endl;
     Task task;
     while (started_)
     {
@@ -155,7 +162,8 @@ void ThreadPool::ThreadFunc()
             {
                 break;
             }
-            std::cout << "线程池工作线程: " << tid << " 已唤醒，现有待处理任务数量: " << taskQueue_.size() << std::endl;
+            LOG(LoggerLevel::INFO, "线程池工作线程：%d已唤醒，现有待处理任务数量：%d\n", tid, taskQueue_.size());
+            // std::cout << "ThreadPool::ThreadFunc 线程池工作线程: " << tid << " 已唤醒，现有待处理任务数量: " << taskQueue_.size() << std::endl;
             // 取出队头待处理任务
             task = taskQueue_.front();
             taskQueue_.pop();
@@ -168,13 +176,15 @@ void ThreadPool::ThreadFunc()
             }
             catch (std::bad_alloc &ba)
             {
-                std::cerr << "bad_alloc错误捕获于函数ThreadPool::ThreadFunc，报错: " << ba.what() << '\n';
+                LOG(LoggerLevel::ERROR, "捕获bad_alloc，错误信息：%s\n", ba.what());
+                std::cerr << "ThreadPool::ThreadFunc bad_alloc错误捕获于函数ThreadPool::ThreadFunc，报错: " << ba.what() << std::endl;
             }
         }
     }
     if (!started_)
     {
-        std::cout << "线程池工作线程：" << tid << " 结束" << std::endl;
+        LOG(LoggerLevel::INFO, "结束工作线程：%d运行\n", tid);
+        // std::cout << "ThreadPool::ThreadFunc 线程池工作线程：" << tid << " 结束" << std::endl;
     }
 }
 
@@ -184,5 +194,6 @@ void ThreadPool::ThreadFunc()
  */
 int ThreadPool::GetThreadNum()
 {
+    LOG(LoggerLevel::INFO, "%s\n", "函数触发");
     return threadNum_;
 }

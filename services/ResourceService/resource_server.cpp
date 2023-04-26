@@ -23,7 +23,7 @@ int main(int argc, char *argv[])
         workerthreadnum = atoi(argv[3]); // 线程池工作线程数量
     }
 
-    EventLoop loop;
+    EventLoop loop; // 该EventLoop是TcpServer的参数，其可以执行监听逻辑主函数
     HttpServer httpServer(&loop, workerthreadnum, nullptr, iothreadnum, port, NULL);
 
     try

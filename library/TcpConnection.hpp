@@ -1,7 +1,11 @@
 
 // TcpConnection类：
 //  客户端连接的抽象表示，每一个客户端连接对应一个TcpConnection
-//  每一个TcpConnection内部生成一个Channel实例用于tcp数据交互
+//  每一个TcpConnection内置一个Channel实例用于与客户端进行业务交互
+//  该类的handleRead、write、close、error四个函数会绑定到内置的Channel内待调用
+//  该类的上述四个函数不同于高级服务的四个函数，高级服务的四个函数会注册到TcpServer内待绑定
+//  该类会根据请求的url映射绑定高级服务函数到messageCallback_、sendcompleteCallback_、error、close等函数指针
+//  即高级服务的待绑定函数只能由该类调用，该类的被绑定函数只能由内置Channel调用
 
 #pragma once
 
@@ -23,6 +27,7 @@
 #include "Timer.hpp"
 #include "Channel.hpp"
 #include "EventLoop.hpp"
+#include "LogServer.hpp"
 #include "TypeIdentify.hpp"
 
 #define BUFSIZE 4096
@@ -30,12 +35,12 @@
 // http请求信息结构
 typedef struct _HttpRequestContext
 {
-    std::string method;      // http方法（get、post等）
-    std::string url;         // http url
+    std::string method;      // http方法（GET、POST等）
+    std::string url;         // http url（/、/HttpService/HttpProcess等）
     std::string serviceName; // url解析出请求的服务名
     std::string handlerName; // url解析出请求的服务的处理函数
     std::string resourceUrl; // url的"/服务名/函数名"后的部分
-    std::string version;     // http version
+    std::string version;     // http version（HTTP/1.0、HTTP/1.1等）
     std::map<std::string, std::string> header;
     std::string body;
 } HttpRequestContext;
@@ -52,6 +57,7 @@ typedef struct _HttpResponseContext
 
 class TcpConnection : public std::enable_shared_from_this<TcpConnection>
 { // 允许安全使用shared_ptr
+
 public:
     typedef std::shared_ptr<TcpConnection> spTcpConnection;  // 指向TcpConnection的智能指针
     typedef std::function<void(spTcpConnection &)> Callback; // 回调函数
@@ -59,8 +65,10 @@ public:
     ~TcpConnection();
     int fd() const { return fd_; }               // 获取套接字描述符
     EventLoop *GetLoop() const { return loop_; } // 获取事件池指针
+    Channel *GetChannel() { return spChannel_.get(); } // 获取内置Channel的指针
     int recvn(int fd, std::string &recvMsg);     // 从客户端fd接收数据
     int sendn(int fd, std::string &sendMsg);     // 发送数据到客户端fd
+    void requestToOut();                         // 从HttpResponseContext重构请求信息到bufferOut_
     void Send(const std::string &s);             // 发送信息函数，指定EventLoop执行
     void Send(const char *s, int length = 0);    // 发送信息函数，指定EventLoop执行
     void SendBufferOut();                        // 发送信息函数，仅发送bufferOut_存储的内容，指定EventLoop执行
@@ -84,26 +92,25 @@ public:
     void SetKeepAlive(bool keepalive);           // 设置长连接标志
     HttpRequestContext &GetReqestBuffer();       // 获取请求解析结构体的引用
     HttpResponseContext &GetResonseBuffer();     // 获取响应解析结构体的引用
-    Callback GetMessageCallback();               // 设置连接处理函数
-    Callback GetSendCompleteCallback();          // 设置数据发送完毕处理函数
-    Callback GetCloseCallback();                 // 设置关闭处理函数
-    Callback GetErrorCallback();                 // 设置出错处理函数
-    Callback GetConnectionCleanUp();             // 设置连接清理函数
-    // 处理错误http请求，返回错误描述
-    void HttpError(const int err_num, const std::string &short_msg);
+    Callback GetMessageCallback();               // 获取连接处理函数指针
+    Callback GetSendCompleteCallback();          // 获取数据发送完毕处理函数指针
+    Callback GetCloseCallback();                 // 获取关闭处理函数指针
+    Callback GetErrorCallback();                 // 获取出错处理函数指针
+    Callback GetConnectionCleanUp();             // 获取连接清理函数指针
+    const Callback &GetReqHandler();             // 获取本次连接事件请求的处理函数
+    void HttpError(const int err_num, const std::string &short_msg); // 处理错误http请求，返回错误描述
+    void SetReqHandler(const Callback &cb);              // 设置本次连接事件请求的处理函数
+    void SetBindedHandler(const bool BindedHandler);     // 设置处理函数绑定状态
+    bool GetBindedHandler(const bool BindedHandler);     // 获取处理函数绑定状态
+    int  SetSendMessage(const std::string &newMsg);      // 截断并设置bufferOut_的内容
+    int  AddSendMessage(const std::string &newMsg);      // 添加新数据到bufferOut_
+    void SetAsyncProcessing(const bool asyncProcessing); // 设置异步处理标志
+    void SetDynamicHandler(const Callback &cb);          // 设置向TcpServer申请动态绑定函数的函数
     void SetMessaeCallback(const Callback &cb);          // 设置连接处理函数
     void SetSendCompleteCallback(const Callback &cb);    // 设置数据发送完毕处理函数
     void SetCloseCallback(const Callback &cb);           // 设置关闭处理函数
     void SetErrorCallback(const Callback &cb);           // 设置出错处理函数
     void SetConnectionCleanUp(const Callback &cb);       // 设置连接清空函数，此函数独属于TcpServer
-    void SetReqHandler(const Callback &cb);              // 设置本次连接事件请求的处理函数
-    const Callback &GetReqHandler();                     // 获取本次连接事件请求的处理函数
-    void SetBindedHandler(const bool BindedHandler);     // 设置处理函数绑定状态
-    bool GetBindedHandler(const bool BindedHandler);     // 获取处理函数绑定状态
-    int SetSendMessage(const std::string &newMsg);       // 重置bufferOut_的内容
-    int AddSendMessage(const std::string &newMsg);       // 添加新数据到bufferOut_
-    void SetDynamicHandler(const Callback &cb);          // 设置向TcpServer申请动态绑定函数的函数
-    void SetAsyncProcessing(const bool asyncProcessing); // 设置异步处理标志
 
 private:
     std::mutex mutex_;                        // 锁
@@ -130,6 +137,7 @@ private:
     Callback reqHandler_;                     // 本次连接事件请求的处理函数，每次请求都会重置
     Callback BindDynamicHandler_;             // 向TcpServer申请动态绑定函数，此函数独属于TcpServer
     Callback connectioncleanup_;              // 连接清理函数，此函数独属于TcpServer
+    
 };
 
 TcpConnection::TcpConnection(EventLoop *loop, int fd, const struct sockaddr_in &clientaddr)
@@ -150,8 +158,9 @@ TcpConnection::TcpConnection(EventLoop *loop, int fd, const struct sockaddr_in &
       BindedHandler_(false)
 {
     // 基于Channel设置TcpConnection的服务函数，在Channel内触发调用TcpConnection的成员函数，类似于信号槽机制
+    LOG(LoggerLevel::INFO, "%s，sockfd：%d\n", "函数触发", fd_);
     spChannel_->SetFd(fd_);
-    spChannel_->SetEvents(EPOLLIN | EPOLLET);
+    spChannel_->SetEvents(EPOLLIN | EPOLLET);   // 初始化时，设置为有数据可读事件、边缘触发模式
     spChannel_->SetReadHandle(std::bind(&TcpConnection::HandleRead, this));
     spChannel_->SetWriteHandle(std::bind(&TcpConnection::HandleWrite, this));
     spChannel_->SetCloseHandle(std::bind(&TcpConnection::HandleClose, this));
@@ -160,29 +169,30 @@ TcpConnection::TcpConnection(EventLoop *loop, int fd, const struct sockaddr_in &
 
 TcpConnection::~TcpConnection()
 {
-    // 多线程下，加入loop的任务队列？不用，因为已经在当前loop线程
     // 移除事件，析构成员变量
-    std::cout << "输出测试：一个TcpConnection连接已被废弃，开始析构, 连接sockfd：" << fd_ << std::endl;
+    LOG(LoggerLevel::INFO, "%s，sockfd：%d\n", "函数触发，一个tcp连接开始析构", fd_);
     loop_->RemoveChannelToPoller(spChannel_.get());
     close(fd_);
     delete timer_;
-    std::cout << "输出测试：一个TcpConnection连接已被废弃，析构即将结束, 连接sockfd：" << fd_ << std::endl;
+    LOG(LoggerLevel::INFO, "%s，sockfd：%d\n", "函数触发，一个tcp连接已被废弃", fd_);
+    std::cout << "TcpConnection::~TcpConnection 一个TcpConnection连接已被废弃，析构即将结束, 连接sockfd：" << fd_ << std::endl;
 }
 
 /*
- * 接收客户端发送的数据，调用绑定的messageCallback_函数
- *
+ * 接收客户端发送的数据，调用绑定的messageCallback_函数转到高级服务函数
+ * 该函数绑定到内置Channel内,有可读事件时调用
+ * 
  */
 void TcpConnection::HandleRead()
 {
-    std::cout << "输出测试：TcpConnection::HandleRead sockfd：" << fd_ << std::endl;
+    LOG(LoggerLevel::INFO, "%s，sockfd：%d\n", "函数触发", fd_);
     // 接收数据，写入缓冲区bufferIn_
     int result = recvn(fd_, bufferIn_);
     if (result > 0)
     {
         if (disConnected_)
         {
-            std::cout << "输出测试：TcpConnection::HandleRead 连接已关闭，不再处理该连接的请求，连接sockfd：" << fd_ << std::endl;
+            LOG(LoggerLevel::INFO, "连接已关闭，不再处理该连接的请求，sockfd：%d\n", fd_);
             return;
         }
         if (reqHealthy_ = ParseHttpRequest())
@@ -194,10 +204,9 @@ void TcpConnection::HandleRead()
             BindDynamicHandler_(sptcpconn);
             if (!BindedHandler_)
             {
-                std::cout << "输出测试：TcpConnection::HandleRead 动态绑定函数失败，处理错误，sockfd：" << fd_ << std::endl;
+                LOG(LoggerLevel::INFO, "动态绑定函数失败，处理错误，sockfd：%d\n", fd_);
                 if (preBindedHandler_)
                 {
-                    spTcpConnection sptcpconn = shared_from_this();
                     errorCallback_(sptcpconn);
                     closeCallback_(sptcpconn);
                 }
@@ -205,7 +214,7 @@ void TcpConnection::HandleRead()
             }
             else
             {
-                std::cout << "输出测试：TcpConnection::HandleRead 动态绑定函数完毕，调整定时关闭并回调高级服务处理，sockfd：" << fd_ << std::endl;
+                LOG(LoggerLevel::INFO, "动态绑定函数完毕，调整定时关闭并回调高级服务处理，sockfd：%d\n", fd_);
                 if (!timer_)
                 {
                     timer_ = new Timer(5000, Timer::TimerType::TIMER_ONCE, std::bind(&TcpConnection::Shutdown, shared_from_this()));
@@ -215,25 +224,29 @@ void TcpConnection::HandleRead()
                 {
                     timer_->Adjust(5000, Timer::TimerType::TIMER_ONCE, std::bind(&TcpConnection::Shutdown, shared_from_this()));
                 }
-                std::cout << "输出测试：TcpConnection::HandleRead 回调高级服务处理，sockfd：" << fd_ << std::endl;
+                // std::cout << "TcpConnection::HandleRead 回调高级服务处理，sockfd：" << fd_ << std::endl;
+                LOG(LoggerLevel::INFO, "回调高级服务处理，sockfd：%d\n", fd_);
                 // 执行动态绑定的上层处理函数messageCallback_处理读取到的缓冲区数据bufferIn_
                 messageCallback_(sptcpconn);
             }
         }
         else
         {
-            std::cout << "输出测试：TcpConnection::HandleRead 解析请求失败，处理错误，sockfd：" << fd_ << std::endl;
+            // std::cout << "TcpConnection::HandleRead 解析请求失败，处理错误，sockfd：" << fd_ << std::endl;
+            LOG(LoggerLevel::INFO, "解析请求失败，调用错误处理函数，sockfd：%d\n", fd_);
             HandleError();
         }
     }
     else if (result == 0)
     {
-        std::cout << "输出测试：TcpConnection::HandleRead 未读取到任何数据，关闭连接，sockfd：" << fd_ << std::endl;
+        // std::cout << "TcpConnection::HandleRead 未读取到任何数据，关闭连接，sockfd：" << fd_ << std::endl;
+        LOG(LoggerLevel::INFO, "未读取到任何数据，关闭连接，sockfd：%d\n", fd_);
         HandleClose();
     }
     else
     {
-        std::cout << "输出测试：TcpConnection::HandleRead 读取数据失败，错误处理，sockfd：" << fd_ << std::endl;
+        // std::cout << "TcpConnection::HandleRead 读取数据失败，错误处理，sockfd：" << fd_ << std::endl;
+        LOG(LoggerLevel::INFO, "读取数据失败，调用错误处理函数，sockfd：%d\n", fd_);
         HandleError();
     }
 }
@@ -244,7 +257,8 @@ void TcpConnection::HandleRead()
  */
 void TcpConnection::AddChannelToLoop()
 {
-    std::cout << "输出测试：TcpConnection::AddChannelToLoop sockfd：" << fd_ << std::endl;
+    LOG(LoggerLevel::INFO, "%s，sockfd：%d\n", "函数触发", fd_);
+    // std::cout << "TcpConnection::AddChannelToLoop sockfd：" << fd_ << std::endl;
     loop_->AddTask(std::bind(&EventLoop::AddChannelToPoller, loop_, spChannel_.get()));
     ChannelAdded_ = true;
 }
@@ -255,7 +269,8 @@ void TcpConnection::AddChannelToLoop()
  */
 void TcpConnection::Send(const std::string &s)
 {
-    std::cout << "输出测试：TcpConnection::Send sockfd：" << fd_ << std::endl;
+    LOG(LoggerLevel::INFO, "%s，sockfd：%d\n", "函数触发", fd_);
+    // std::cout << "TcpConnection::Send sockfd：" << fd_ << std::endl;
     SetSendMessage(s);
     SendBufferOut();
 }
@@ -267,7 +282,8 @@ void TcpConnection::Send(const std::string &s)
  */
 void TcpConnection::Send(const char *s, int length)
 {
-    std::cout << "输出测试：TcpConnection::Send sockfd：" << fd_ << std::endl;
+    LOG(LoggerLevel::INFO, "%s，sockfd：%d\n", "函数触发", fd_);
+    // std::cout << "TcpConnection::Send sockfd：" << fd_ << std::endl;
     if (!length)
     {
         // 缺省默认长度为0，只能用strlen函数计算s的长度，这会被第一个'\0'截断
@@ -285,7 +301,8 @@ void TcpConnection::Send(const char *s, int length)
  */
 void TcpConnection::SendBufferOut()
 {
-    std::cout << "输出测试：TcpConnection::SendBufferOut sockfd：" << fd_ << std::endl;
+    LOG(LoggerLevel::INFO, "%s，sockfd：%d\n", "函数触发", fd_);
+    // std::cout << "TcpConnection::SendBufferOut sockfd：" << fd_ << std::endl;
     // 判断当前线程是不是Loop IO所在线程
     if (loop_->GetThreadId() == std::this_thread::get_id())
     {
@@ -298,7 +315,8 @@ void TcpConnection::SendBufferOut()
         asyncProcessing_ = false;
         // 跨线程调用,加入IO线程的任务队列，唤醒
         spTcpConnection sptcpconn = shared_from_this();
-        std::cout << "输出测试：TcpConnection::SendBufferOut 向loop_添加TcpConnection::SendInLoop函数，socket：" << fd_ << std::endl;
+        // std::cout << "TcpConnection::SendBufferOut 向loop_添加TcpConnection::SendInLoop函数，socket：" << fd_ << std::endl;
+        LOG(LoggerLevel::INFO, "向loop_添加TcpConnection::SendInLoop函数，socket：%d\n", fd_);
         loop_->AddTask(std::bind(&TcpConnection::SendInLoop, sptcpconn));
     }
 }
@@ -309,10 +327,11 @@ void TcpConnection::SendBufferOut()
  */
 void TcpConnection::SendInLoop()
 {
-    std::cout << "输出测试：TcpConnection::SendInLoop sockfd：" << fd_ << std::endl;
+    LOG(LoggerLevel::INFO, "%s，sockfd：%d\n", "函数触发", fd_);
     if (disConnected_)
     {
-        std::cout << "输出测试：TcpConnection::SendInLoop 连接已关闭，无法发送任何数据，连接sockfd：" << fd_ << std::endl;
+        LOG(LoggerLevel::ERROR, "连接已关闭，无法发送任何数据，sockfd：%d\n", fd_);
+        // std::cout << "TcpConnection::SendInLoop 连接已关闭，无法发送任何数据，sockfd：" << fd_ << std::endl;
         return;
     }
     int result = sendn(fd_, bufferOut_);
@@ -321,7 +340,7 @@ void TcpConnection::SendInLoop()
         uint32_t events = spChannel_->GetEvents();
         if (!bufferOut_.empty())
         {
-            // 缓冲区满了，数据没发完，就设置EPOLLOUT事件触发
+            // 缓冲区数据没发完，就设置EPOLLOUT事件待触发
             spChannel_->SetEvents(events | EPOLLOUT);
             loop_->UpdateChannelToPoller(spChannel_.get());
         }
@@ -341,12 +360,14 @@ void TcpConnection::SendInLoop()
     }
     else if (result < 0)
     {
-        std::cout << "输出测试：TcpConnection::SendInLoop 发送数据失败，错误处理并关闭连接" << std::endl;
+        LOG(LoggerLevel::ERROR, "发送数据失败，错误处理并关闭连接，sockfd：%d\n", fd_);
+        // std::cout << "TcpConnection::SendInLoop 发送数据失败，错误处理并关闭连接" << std::endl;
         HandleError();
     }
     else
     {
-        std::cout << "输出测试：TcpConnection::SendInLoop 发送数据量为0，关闭连接" << std::endl;
+        LOG(LoggerLevel::ERROR, "发送数据量为0，关闭连接，sockfd：%d\n", fd_);
+        // std::cout << "TcpConnection::SendInLoop 发送数据量为0，关闭连接" << std::endl;
         HandleClose();
     }
 }
@@ -357,7 +378,8 @@ void TcpConnection::SendInLoop()
  */
 void TcpConnection::Shutdown()
 {
-    std::cout << "输出测试：TcpConnection::Shutdown sockfd：" << fd_ << std::endl;
+    LOG(LoggerLevel::INFO, "%s，sockfd：%d\n", "函数触发", fd_);
+    // std::cout << "TcpConnection::Shutdown sockfd：" << fd_ << std::endl;
     if (loop_->GetThreadId() == std::this_thread::get_id())
     {
         HandleClose();
@@ -366,7 +388,8 @@ void TcpConnection::Shutdown()
     {
         // 加入IO线程的任务队列，唤醒
         spTcpConnection sptcpconn = shared_from_this();
-        std::cout << "输出测试：TcpConnection::Shutdown 向loop_添加TcpConnection::HandleClose函数" << std::endl;
+        // std::cout << "TcpConnection::Shutdown 向loop_添加TcpConnection::HandleClose函数" << std::endl;
+        LOG(LoggerLevel::INFO, "向loop_添加TcpConnection::HandleClose函数，socket：%d\n", fd_);
         loop_->AddTask(std::bind(&TcpConnection::HandleClose, sptcpconn));
     }
 }
@@ -377,10 +400,11 @@ void TcpConnection::Shutdown()
  */
 void TcpConnection::HandleWrite()
 {
-    std::cout << "输出测试：TcpConnection::HandleWrite sockfd：" << fd_ << std::endl;
+    LOG(LoggerLevel::INFO, "%s，sockfd：%d\n", "函数触发", fd_);
+    // std::cout << "TcpConnection::HandleWrite sockfd：" << fd_ << std::endl;
     if (disConnected_)
     {
-        std::cout << "输出测试：TcpConnection::HandleWrite 连接已关闭，无法发送任何数据，连接sockfd：" << fd_ << std::endl;
+        // std::cout << "TcpConnection::HandleWrite 连接已关闭，无法发送任何数据，sockfd：" << fd_ << std::endl;
         return;
     }
     int result = sendn(fd_, bufferOut_);
@@ -406,12 +430,14 @@ void TcpConnection::HandleWrite()
     }
     else if (result < 0)
     {
-        std::cout << "输出测试：TcpConnection::HandleWrite 数据发送失败，错误处理" << std::endl;
+        // std::cout << "TcpConnection::HandleWrite 数据发送失败，错误处理" << std::endl;
+        LOG(LoggerLevel::ERROR, "数据发送失败，调用错误处理函数，socket：%d\n", fd_);
         HandleError();
     }
     else
     {
-        std::cout << "输出测试：TcpConnection::HandleWrite 数据发送量为0，关闭连接" << std::endl;
+        // std::cout << "TcpConnection::HandleWrite 数据发送量为0，关闭连接" << std::endl;
+        LOG(LoggerLevel::ERROR, "数据发送量为0，关闭连接，socket：%d\n", fd_);
         HandleClose();
     }
 }
@@ -422,16 +448,18 @@ void TcpConnection::HandleWrite()
  */
 void TcpConnection::HandleError()
 {
-    std::cout << "输出测试：TcpConnection::HandleError sockfd：" << fd_ << std::endl;
+    LOG(LoggerLevel::INFO, "%s，sockfd：%d\n", "函数触发", fd_);
+    // std::cout << "TcpConnection::HandleError sockfd：" << fd_ << std::endl;
     if (disConnected_)
     {
-        std::cout << "输出测试：TcpConnection::HandleError 连接已关闭，无法发送任何数据，连接sockfd：" << fd_ << std::endl;
+        LOG(LoggerLevel::ERROR, "连接已关闭，无法发送任何数据，socket：%d\n", fd_);
         return;
     }
     if (!BindedHandler_)
     {
         // 未绑定处理函数或本次请求的函数绑定失败，客户端函数写错了
-        std::cout << "输出测试：绑定函数失败，本次请求url：" << httpRequestContext_.url << std::endl;
+        // std::cout << "绑定函数失败，本次请求url：" << httpRequestContext_.url << std::endl;
+        LOG(LoggerLevel::ERROR, "绑定高级服务函数失败，本次请求url：%s，socket：%d\n", httpRequestContext_.url.data(), fd_);
         if (!httpRequestContext_.serviceName.empty())
         {
             HttpError(400, "所请求的服务：" + httpRequestContext_.serviceName + " 没有这样的处理函数（" + httpRequestContext_.handlerName + "）：" + httpRequestContext_.url);
@@ -449,7 +477,8 @@ void TcpConnection::HandleError()
     else
     {
         // 连接尚未关闭，调用可调用的errorCallback_，并关闭连接
-        std::cout << "输出测试：TcpConnection错误处理，socket：" << fd_ << std::endl;
+        // std::cout << "TcpConnection错误处理，socket：" << fd_ << std::endl;
+        LOG(LoggerLevel::INFO, "调用绑定的高级服务错误处理函数，socket：%d\n", fd_);
         spTcpConnection sptcpconn = shared_from_this();
         errorCallback_(sptcpconn);
         HandleClose();
@@ -463,18 +492,22 @@ void TcpConnection::HandleError()
  */
 void TcpConnection::HandleClose()
 {
-    std::cout << "输出测试：TcpConnection::HandleClose sockfd：" << fd_ << std::endl;
+    LOG(LoggerLevel::INFO, "%s，sockfd：%d\n", "函数触发", fd_);
+    // std::cout << "TcpConnection::HandleClose sockfd：" << fd_ << std::endl;
     if (disConnected_)
     {
-        std::cout << "输出测试：TcpConnection::HandleClose 无需处理已关闭的连接TcpConnection，socket：" << fd_ << std::endl;
+        LOG(LoggerLevel::ERROR, "无需重复关闭已关闭的连接TcpConnection，socket：%d\n", fd_);
+        // std::cout << "TcpConnection::HandleClose 无需处理已关闭的连接TcpConnection，socket：" << fd_ << std::endl;
         return;
     }
-    std::cout << "输出测试：TcpConnection::HandleClose TcpConnection连接即将关闭，socket：" << fd_ << std::endl;
+    LOG(LoggerLevel::INFO, "TcpConnection连接即将关闭，socket：%d\n", fd_);
+    // std::cout << "TcpConnection::HandleClose TcpConnection连接即将关闭，socket：" << fd_ << std::endl;
     // if (bufferOut_.size() > 0 || bufferIn_.length() > 0 || asyncProcessing_)
     if (asyncProcessing_)
     {
-        std::cout << "输出测试：TcpConnection::HandleClose TcpConnection连接未正常处理，半关闭并处理，socket：" << fd_ << std::endl;
+        // std::cout << "TcpConnection::HandleClose TcpConnection连接未正常处理，半关闭并处理，socket：" << fd_ << std::endl;
         // 有线程正在逻辑处理
+        LOG(LoggerLevel::INFO, "TcpConnection连接未正常处理，设置半关闭标志并执行处理，socket：%d\n", fd_);
         halfClose_ = true;
         if (bufferIn_.length() > 0)
         {
@@ -487,8 +520,11 @@ void TcpConnection::HandleClose()
         spTcpConnection sptcpconn = shared_from_this();
         if (BindedHandler_)
             closeCallback_(sptcpconn);
-        std::cout << "输出测试：TcpConnection::HandleClose 向loop_添加TcpConnection::connectioncleanup_函数，sockfd：" << fd_ << std::endl;
-        // 在TcpServer内删除指向此TcpConnection的智能指针，在所有多线程任务都执行完后，没有指向此的智能指针时将进行析构
+        // std::cout << "TcpConnection::HandleClose 向loop_添加TcpConnection::connectioncleanup_函数，sockfd：" << fd_ << std::endl;
+        LOG(LoggerLevel::INFO, "向loop_添加TcpConnection::connectioncleanup_函数执行连接清理，socket：%d\n", fd_);
+        // connectioncleanup_绑定TcpServer的连接清理函数
+        // 在TcpServer内删除指向此TcpConnection的智能指针
+        // 当没有指向此的智能指针时此连接将进行析构
         loop_->AddTask(std::bind(connectioncleanup_, sptcpconn));
         disConnected_ = true;
     }
@@ -500,7 +536,7 @@ void TcpConnection::HandleClose()
  */
 void TcpConnection::SetDynamicHandler(const Callback &cb)
 {
-    std::cout << "输出测试：TcpConnection::SetDynamicHandler sockfd：" << fd_ << std::endl;
+    LOG(LoggerLevel::INFO, "%s，sockfd：%d\n", "函数触发", fd_);
     std::lock_guard<std::mutex> lock(mutex_);
     BindDynamicHandler_ = cb;
 }
@@ -511,7 +547,7 @@ void TcpConnection::SetDynamicHandler(const Callback &cb)
  */
 void TcpConnection::SetMessaeCallback(const Callback &cb)
 {
-    std::cout << "输出测试：TcpConnection::SetMessaeCallback sockfd：" << fd_ << std::endl;
+    LOG(LoggerLevel::INFO, "%s，sockfd：%d\n", "函数触发", fd_);
     std::lock_guard<std::mutex> lock(mutex_);
     messageCallback_ = cb;
 }
@@ -522,7 +558,7 @@ void TcpConnection::SetMessaeCallback(const Callback &cb)
  */
 void TcpConnection::SetSendCompleteCallback(const Callback &cb)
 {
-    std::cout << "输出测试：TcpConnection::SetSendCompleteCallback sockfd：" << fd_ << std::endl;
+    LOG(LoggerLevel::INFO, "%s，sockfd：%d\n", "函数触发", fd_);
     std::lock_guard<std::mutex> lock(mutex_);
     sendcompleteCallback_ = cb;
 }
@@ -533,7 +569,7 @@ void TcpConnection::SetSendCompleteCallback(const Callback &cb)
  */
 void TcpConnection::SetCloseCallback(const Callback &cb)
 {
-    std::cout << "输出测试：TcpConnection::SetCloseCallback sockfd：" << fd_ << std::endl;
+    LOG(LoggerLevel::INFO, "%s，sockfd：%d\n", "函数触发", fd_);
     std::lock_guard<std::mutex> lock(mutex_);
     closeCallback_ = cb;
 }
@@ -544,7 +580,7 @@ void TcpConnection::SetCloseCallback(const Callback &cb)
  */
 void TcpConnection::SetErrorCallback(const Callback &cb)
 {
-    std::cout << "输出测试：TcpConnection::SetErrorCallback sockfd：" << fd_ << std::endl;
+    LOG(LoggerLevel::INFO, "%s，sockfd：%d\n", "函数触发", fd_);
     std::lock_guard<std::mutex> lock(mutex_);
     errorCallback_ = cb;
 }
@@ -555,7 +591,7 @@ void TcpConnection::SetErrorCallback(const Callback &cb)
  */
 void TcpConnection::SetConnectionCleanUp(const Callback &cb)
 {
-    std::cout << "输出测试：TcpConnection::SetConnectionCleanUp sockfd：" << fd_ << std::endl;
+    LOG(LoggerLevel::INFO, "%s，sockfd：%d\n", "函数触发", fd_);
     std::lock_guard<std::mutex> lock(mutex_);
     connectioncleanup_ = cb;
 }
@@ -566,7 +602,7 @@ void TcpConnection::SetConnectionCleanUp(const Callback &cb)
  */
 void TcpConnection::SetReqHandler(const Callback &cb)
 {
-    std::cout << "输出测试：TcpConnection::SetReqHandler sockfd：" << fd_ << std::endl;
+    LOG(LoggerLevel::INFO, "%s，sockfd：%d\n", "函数触发", fd_);
     std::lock_guard<std::mutex> lock(mutex_);
     reqHandler_ = cb;
 }
@@ -577,7 +613,7 @@ void TcpConnection::SetReqHandler(const Callback &cb)
  */
 const TcpConnection::Callback &TcpConnection::GetReqHandler()
 {
-    std::cout << "输出测试：TcpConnection::GetReqHandler sockfd：" << fd_ << std::endl;
+    LOG(LoggerLevel::INFO, "%s，sockfd：%d\n", "函数触发", fd_);
     std::lock_guard<std::mutex> lock(mutex_);
     return reqHandler_;
 }
@@ -588,7 +624,7 @@ const TcpConnection::Callback &TcpConnection::GetReqHandler()
  */
 void TcpConnection::SetBindedHandler(const bool BindedHandler)
 {
-    std::cout << "输出测试：TcpConnection::SetBindedHandler sockfd：" << fd_ << std::endl;
+    LOG(LoggerLevel::INFO, "%s，sockfd：%d\n", "函数触发", fd_);
     std::lock_guard<std::mutex> lock(mutex_);
     BindedHandler_ = BindedHandler;
 }
@@ -599,6 +635,7 @@ void TcpConnection::SetBindedHandler(const bool BindedHandler)
  */
 bool TcpConnection::GetBindedHandler(const bool BindedHandler)
 {
+    LOG(LoggerLevel::INFO, "%s，sockfd：%d\n", "函数触发", fd_);
     std::lock_guard<std::mutex> lock(mutex_);
     return BindedHandler_;
 }
@@ -609,6 +646,7 @@ bool TcpConnection::GetBindedHandler(const bool BindedHandler)
  */
 TcpConnection::Callback TcpConnection::GetMessageCallback()
 {
+    LOG(LoggerLevel::INFO, "%s，sockfd：%d\n", "函数触发", fd_);
     std::lock_guard<std::mutex> lock(mutex_);
     return messageCallback_;
 }
@@ -619,6 +657,7 @@ TcpConnection::Callback TcpConnection::GetMessageCallback()
  */
 TcpConnection::Callback TcpConnection::GetSendCompleteCallback()
 {
+    LOG(LoggerLevel::INFO, "%s，sockfd：%d\n", "函数触发", fd_);
     std::lock_guard<std::mutex> lock(mutex_);
     return sendcompleteCallback_;
 }
@@ -629,6 +668,7 @@ TcpConnection::Callback TcpConnection::GetSendCompleteCallback()
  */
 TcpConnection::Callback TcpConnection::GetCloseCallback()
 {
+    LOG(LoggerLevel::INFO, "%s，sockfd：%d\n", "函数触发", fd_);
     std::lock_guard<std::mutex> lock(mutex_);
     return closeCallback_;
 }
@@ -639,6 +679,7 @@ TcpConnection::Callback TcpConnection::GetCloseCallback()
  */
 TcpConnection::Callback TcpConnection::GetErrorCallback()
 {
+    LOG(LoggerLevel::INFO, "%s，sockfd：%d\n", "函数触发", fd_);
     std::lock_guard<std::mutex> lock(mutex_);
     return errorCallback_;
 }
@@ -649,6 +690,7 @@ TcpConnection::Callback TcpConnection::GetErrorCallback()
  */
 TcpConnection::Callback TcpConnection::GetConnectionCleanUp()
 {
+    LOG(LoggerLevel::INFO, "%s，sockfd：%d\n", "函数触发", fd_);
     std::lock_guard<std::mutex> lock(mutex_);
     return connectioncleanup_;
 }
@@ -659,6 +701,7 @@ TcpConnection::Callback TcpConnection::GetConnectionCleanUp()
  */
 void TcpConnection::SetAsyncProcessing(const bool asyncProcessing)
 {
+    LOG(LoggerLevel::INFO, "%s，sockfd：%d\n", "函数触发", fd_);
     std::lock_guard<std::mutex> lock(mutex_);
     asyncProcessing_ = asyncProcessing;
 }
@@ -670,6 +713,7 @@ void TcpConnection::SetAsyncProcessing(const bool asyncProcessing)
  */
 int TcpConnection::SetSendMessage(const std::string &newMsg)
 {
+    LOG(LoggerLevel::INFO, "%s，sockfd：%d\n", "函数触发", fd_);
     std::lock_guard<std::mutex> lock(mutex_);
     bufferOut_.clear();
     bufferOut_.append(newMsg, 0, newMsg.length());
@@ -683,6 +727,7 @@ int TcpConnection::SetSendMessage(const std::string &newMsg)
  */
 int TcpConnection::AddSendMessage(const std::string &newMsg)
 {
+    LOG(LoggerLevel::INFO, "%s，sockfd：%d\n", "函数触发", fd_);
     std::lock_guard<std::mutex> lock(mutex_);
     bufferOut_.append(newMsg, 0, newMsg.length());
     return newMsg.length();
@@ -694,6 +739,7 @@ int TcpConnection::AddSendMessage(const std::string &newMsg)
  */
 std::string &TcpConnection::GetBufferIn()
 {
+    LOG(LoggerLevel::INFO, "%s，sockfd：%d\n", "函数触发", fd_);
     std::lock_guard<std::mutex> lock(mutex_);
     return bufferIn_;
 }
@@ -704,6 +750,7 @@ std::string &TcpConnection::GetBufferIn()
  */
 std::string &TcpConnection::GetBufferOut()
 {
+    LOG(LoggerLevel::INFO, "%s，sockfd：%d\n", "函数触发", fd_);
     std::lock_guard<std::mutex> lock(mutex_);
     return bufferOut_;
 }
@@ -714,6 +761,7 @@ std::string &TcpConnection::GetBufferOut()
  */
 int TcpConnection::GetReceiveLength()
 {
+    LOG(LoggerLevel::INFO, "%s，sockfd：%d\n", "函数触发", fd_);
     std::lock_guard<std::mutex> lock(mutex_);
     return bufferIn_.size();
 }
@@ -724,6 +772,7 @@ int TcpConnection::GetReceiveLength()
  */
 int TcpConnection::GetSendLength()
 {
+    LOG(LoggerLevel::INFO, "%s，sockfd：%d\n", "函数触发", fd_);
     std::lock_guard<std::mutex> lock(mutex_);
     return bufferOut_.length();
 }
@@ -734,6 +783,7 @@ int TcpConnection::GetSendLength()
  */
 bool TcpConnection::IsDisconnected()
 {
+    LOG(LoggerLevel::INFO, "%s，sockfd：%d\n", "函数触发", fd_);
     std::lock_guard<std::mutex> lock(mutex_);
     return disConnected_;
 }
@@ -744,6 +794,7 @@ bool TcpConnection::IsDisconnected()
  */
 bool TcpConnection::WillKeepAlive()
 {
+    LOG(LoggerLevel::INFO, "%s，sockfd：%d\n", "函数触发", fd_);
     std::lock_guard<std::mutex> lock(mutex_);
     return keepalive_;
 }
@@ -754,6 +805,7 @@ bool TcpConnection::WillKeepAlive()
  */
 bool TcpConnection::GetReqHealthy()
 {
+    LOG(LoggerLevel::INFO, "%s，sockfd：%d\n", "函数触发", fd_);
     std::lock_guard<std::mutex> lock(mutex_);
     return reqHealthy_;
 }
@@ -764,6 +816,7 @@ bool TcpConnection::GetReqHealthy()
  */
 void TcpConnection::SetKeepAlive(bool keepalive)
 {
+    LOG(LoggerLevel::INFO, "%s，sockfd：%d\n", "函数触发", fd_);
     std::lock_guard<std::mutex> lock(mutex_);
     keepalive_ = keepalive;
 }
@@ -774,6 +827,7 @@ void TcpConnection::SetKeepAlive(bool keepalive)
  */
 void TcpConnection::StartTimer()
 {
+    LOG(LoggerLevel::INFO, "%s，sockfd：%d\n", "函数触发", fd_);
     timer_->Start();
 }
 
@@ -783,6 +837,7 @@ void TcpConnection::StartTimer()
  */
 Timer *TcpConnection::GetTimer()
 {
+    LOG(LoggerLevel::INFO, "%s，sockfd：%d\n", "函数触发", fd_);
     std::lock_guard<std::mutex> lock(mutex_);
     return timer_;
 }
@@ -793,6 +848,7 @@ Timer *TcpConnection::GetTimer()
  */
 HttpRequestContext &TcpConnection::GetReqestBuffer()
 {
+    LOG(LoggerLevel::INFO, "%s，sockfd：%d\n", "函数触发", fd_);
     std::lock_guard<std::mutex> lock(mutex_);
     return httpRequestContext_;
 }
@@ -803,6 +859,7 @@ HttpRequestContext &TcpConnection::GetReqestBuffer()
  */
 HttpResponseContext &TcpConnection::GetResonseBuffer()
 {
+    LOG(LoggerLevel::INFO, "%s，sockfd：%d\n", "函数触发", fd_);
     std::lock_guard<std::mutex> lock(mutex_);
     return httpResponseContext_;
 }
@@ -813,7 +870,8 @@ HttpResponseContext &TcpConnection::GetResonseBuffer()
  */
 bool TcpConnection::ParseHttpRequest()
 {
-    std::cout << "输出测试：TcpConnection::ParseHttpRequest sockfd：" << fd_ << std::endl;
+    LOG(LoggerLevel::INFO, "%s，sockfd：%d\n", "函数触发", fd_);
+    // std::cout << "TcpConnection::ParseHttpRequest sockfd：" << fd_ << std::endl;
     std::string crlf("\r\n"), crlfcrlf("\r\n\r\n");
     size_t prev = 0, next = 0, pos_colon;
     std::string key, value;
@@ -832,8 +890,8 @@ bool TcpConnection::ParseHttpRequest()
     else
     {
         // 没有"\r\n"字段
-        std::cout << "error received message：" << bufferIn_ << std::endl;
-        std::cout << "Error in httpParser: http_request_line isn't complete!" << std::endl;
+        // std::cout << "TcpConnection::GetResonseBuffer 错误的请求信息：" << bufferIn_ << std::endl << "，sockfd：" << fd_ << std::endl;
+        LOG(LoggerLevel::ERROR, "接收的请求不完整，socket：%d\n", fd_);
         parseresult = false;
         bufferIn_.clear();
         return parseresult;
@@ -856,7 +914,8 @@ bool TcpConnection::ParseHttpRequest()
     else
     {
         // 无"\r\n\r\n"字段
-        std::cout << "Error in httpParser: http_request_header isn't complete!" << std::endl;
+        // std::cout << "TcpConnection::GetResonseBuffer 错误的请求信息：" << bufferIn_ << std::endl << "，sockfd：" << fd_ << std::endl;
+        LOG(LoggerLevel::ERROR, "接收的请求不完整，socket：%d\n", fd_);
         parseresult = false;
         bufferIn_.clear();
         return parseresult;
@@ -874,7 +933,8 @@ bool TcpConnection::ParseHttpRequest()
  */
 // bool TcpConnection::ParseHttpRequest(char *msg, int msgLength, HttpRequestContext &httprequestcontext)
 // {
-//     std::cout << "输出测试：TcpConnection::ParseHttpRequest sockfd：" << fd_ << std::endl;;
+//     LOG(LoggerLevel::INFO, "%s，sockfd：%d\n", "函数触发", fd_);
+//     std::cout << "TcpConnection::ParseHttpRequest sockfd：" << fd_ << std::endl;;
 //     const char *crlf = "\r\n";
 //     const char *crlfcrlf = "\r\n\r\n";
 //     bool parseresult = false;
@@ -940,11 +1000,12 @@ bool TcpConnection::ParseHttpRequest()
 
 /*
  * 处理错误http请求，返回错误描述
+ * 该函数不同于errorCallback_，该函数不能被Channel调用
  *
  */
 void TcpConnection::HttpError(const int err_num, const std::string &short_msg)
 {
-    std::cout << "输出测试：TcpConnection::HttpError sockfd：" << fd_ << std::endl;
+    LOG(LoggerLevel::INFO, "%s，sockfd：%d\n", "函数触发", fd_);
     bufferOut_.clear();
     if (httpRequestContext_.version.empty())
     {
@@ -974,8 +1035,27 @@ void TcpConnection::HttpError(const int err_num, const std::string &short_msg)
  * 读取客户端数据
  *
  */
+void TcpConnection::requestToOut()
+{
+    LOG(LoggerLevel::INFO, "%s，sockfd：%d\n", "函数触发", fd_);
+    bufferOut_.clear();
+    bufferOut_ += httpRequestContext_.method + " " + httpRequestContext_.url + " " + httpRequestContext_.version + "\r\n";
+    std::string key, value;
+    for(auto i : httpRequestContext_.header)
+    {
+        std::tie(key, value) = i;
+        bufferOut_ += key + ": " + value + "\r\n";
+    }
+    bufferOut_ += "\r\n" + httpRequestContext_.body;
+}
+
+/*
+ * 读取客户端数据
+ *
+ */
 int TcpConnection::recvn(int fd, std::string &recvMsg)
 {
+    LOG(LoggerLevel::INFO, "%s，sockfd：%d\n", "函数触发", fd_);
     std::lock_guard<std::mutex> lock(mutex_);
     recvMsg.clear();
     int nbyte = 0;
@@ -988,7 +1068,8 @@ int TcpConnection::recvn(int fd, std::string &recvMsg)
             recvMsg.append(buffer, nbyte);
             if (nbyte < BUFSIZE)
             {
-                // std::cout << std::endl << "接收到请求内容：" << std::endl << recvMsg << std::endl << std::endl;
+                LOG(LoggerLevel::ERROR, "接收的请求信息：%s\n，socket：%d\n\n", recvMsg.c_str(), fd_);
+                // std::cout << std::endl << "TcpConnection::recvn 接收到请求信息：" << std::endl << recvMsg << std::endl << std::endl;
                 return recvMsg.length(); // 读优化，减小一次读调用，因为一次调用耗时10+us
             }
             else
@@ -996,27 +1077,28 @@ int TcpConnection::recvn(int fd, std::string &recvMsg)
         }
         else if (nbyte < 0) // 异常
         {
-            if (errno == EAGAIN) // 系统缓冲区未有数据，非阻塞返回
+            if (errno == EAGAIN) // 以非阻塞方式读且无数据，非阻塞返回
             {
-                // std::cout << "EAGAIN,系统缓冲区未有数据，非阻塞返回" << std::endl;
+                LOG(LoggerLevel::INFO, "接收数据错误（EAGAIN），未读取到数据，socket：%d\n", fd_);
                 return recvMsg.size();
+                // std::cout << "TcpConnection::recvn 接收数据错误，接收数据量为0，sockfd：" << fd_ << std::endl;
             }
-            else if (errno == EINTR)
+            else if (errno == EINTR) // 信号中断且对信号的处理方式为捕捉
             {
-                std::cout << "errno == EINTR" << std::endl;
                 continue;
             }
-            else
+            else // 发生错误
             {
-                // 可能是RST
-                perror("recv error");
-                // std::cout << "recv error" << std::endl;
+                LOG(LoggerLevel::ERROR, "接收数据错误，socket：%d\n", fd_);
+                perror("接收数据错误");
+                // std::cout << "TcpConnection::recvn 接受数据错误，sockfd：" << fd_ << std::endl;
                 return -1;
             }
         }
         else // 返回0，客户端关闭socket，FIN
         {
-            // std::cout << "client close the Socket" << std::endl;
+            LOG(LoggerLevel::INFO, "接收数据错误，客户端已关闭连接，socket：%d\n", fd_);
+            // std::cout << "TcpConnection::recvn 接收数据错误，客户端已关闭连接，socket：" << fd_ << std::endl;
             return 0;
         }
     }
@@ -1028,6 +1110,7 @@ int TcpConnection::recvn(int fd, std::string &recvMsg)
  */
 int TcpConnection::sendn(int fd, std::string &sendMsg)
 {
+    LOG(LoggerLevel::INFO, "%s，sockfd：%d\n", "函数触发", fd_);
     std::lock_guard<std::mutex> lock(mutex_);
     ssize_t nbyte = 0;
     int sendsum = 0;
@@ -1048,32 +1131,33 @@ int TcpConnection::sendn(int fd, std::string &sendMsg)
         {
             if (errno == EAGAIN) // 系统缓冲区满，非阻塞返回
             {
-                std::cout << "write errno == EAGAIN,not finish!" << std::endl;
+                LOG(LoggerLevel::ERROR, "发送数据错误，系统缓冲区满，socket：%d\n", fd_);
                 return sendsum;
             }
             else if (errno == EINTR)
             {
-                std::cout << "write errno == EINTR" << std::endl;
                 continue;
             }
             else if (errno == EPIPE)
             {
                 // 客户端已经close，并发了RST，继续wirte会报EPIPE，返回0，表示close
-                perror("write error");
-                std::cout << "write errno == client send RST" << std::endl;
+                LOG(LoggerLevel::ERROR, "发送数据错误，客户端发送RST，socket：%d\n", fd_);
+                perror("发送数据错误");
+                // std::cout << "TcpConnection::sendn 发送数据错误，sockfd：" << fd_ << std::endl;
                 return -1;
             }
             else
             {
-                perror("write error"); // Connection reset by peer
-                std::cout << "write error, unknow error" << std::endl;
+                LOG(LoggerLevel::ERROR, "发送数据错误，发送数据错误，socket：%d\n", fd_);
+                perror("发送数据错误");
+                // std::cout << "TcpConnection::sendn 发送数据错误，sockfd：" << fd_ << std::endl;
                 return -1;
             }
         }
-        else // 返回0
+        else // 返回0，客户端关闭socket，FIN
         {
-            // 应该不会返回0
-            // std::cout << "client close the Socket!" << std::endl;
+            LOG(LoggerLevel::INFO, "发送数据错误，客户端已关闭连接，socket：%d\n", fd_);
+            // std::cout << "TcpConnection::sendn 发送数据错误，客户端已关闭连接，socket：" << fd_ << std::endl;
             return 0;
         }
     }

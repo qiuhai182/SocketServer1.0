@@ -704,19 +704,21 @@ class TypeIdentify
 public:
     static std::string getContentTypeBySuffix(const std::string &suffix)
     {
-        std::cout << "输出测试：TypeIdentify::getContentTypeBySuffix " << std::endl;
+        LOG(LoggerLevel::INFO, "%s\n", "函数触发");
         if(getTypeIdentifyInstance()->contentType.end() == getTypeIdentifyInstance()->contentType.find(suffix))
         {
-            std::cout << "输出测试：TypeIdentify::getContentTypeBySuffix 未定义后缀类型：" << suffix << std::endl;
+            LOG(LoggerLevel::INFO, "未定义后缀类型：%s\n", suffix.c_str());
+            // std::cout << "TypeIdentify::getContentTypeBySuffix 未定义后缀类型：" << suffix << std::endl;
             return "";
         }
-        std::cout << "输出测试：TypeIdentify::getContentTypeBySuffix 成功解析后缀文件类型：" << suffix << " (" << contentType[suffix] << ")" << std::endl;
+        LOG(LoggerLevel::INFO, "成功解析后缀文件类型：%s\n", suffix.c_str());
+        // std::cout << "TypeIdentify::getContentTypeBySuffix 成功解析后缀文件类型：" << suffix << " (" << contentType[suffix] << ")" << std::endl;
         return contentType[suffix];
     }
     
     static std::string getContentTypeByPath(const std::string &pathName)
     {
-        std::cout << "输出测试：TypeIdentify::getContentTypeByPath " << std::endl;
+        LOG(LoggerLevel::INFO, "%s\n", "函数触发");
         size_t point;
         std::string suffix;
         if ((point = pathName.rfind('.')) != std::string::npos)
@@ -725,12 +727,14 @@ public:
         }
         if(suffix.empty())
         {
-            std::cout << "输出测试：TypeIdentify::getContentTypeByPath 解析后缀失败 路径为：" << pathName << " (" << suffix << ")" << std::endl;
+            LOG(LoggerLevel::ERROR, "解析后缀失败，请求资源路径为：%s（%s）\n", pathName.data(), suffix.c_str());
+            // std::cout << "TypeIdentify::getContentTypeByPath 解析后缀失败，请求资源路径为：" << pathName << " (" << suffix << ")" << std::endl;
             return "";
         }
         else
         {
-            std::cout << "输出测试：TypeIdentify::getContentTypeByPath 成功解析后缀 路径为：" << pathName << " (" << suffix << ")" << std::endl;
+            LOG(LoggerLevel::ERROR, "解析后缀成功，请求资源路径为：%s（%s）\n", pathName.data(), suffix.c_str());
+            // std::cout << "TypeIdentify::getContentTypeByPath 成功解析后缀，请求资源路径为：" << pathName << " (" << suffix << ")" << std::endl;
             return getContentTypeBySuffix(suffix);
         }
     }

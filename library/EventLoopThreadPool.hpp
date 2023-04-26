@@ -35,6 +35,7 @@ EventLoopThreadPool::EventLoopThreadPool(EventLoop *mainloop, int threadNum)
     // 创建threadNum个事件池工作线程
     for (int i = 0; i < threadNum_; ++i)
     {
+        // 线程实体构造完成即在运行
         EventLoopThread *preLoopThread = new EventLoopThread;
         eventLoopThreadList_.push_back(preLoopThread);
     }
@@ -42,7 +43,7 @@ EventLoopThreadPool::EventLoopThreadPool(EventLoop *mainloop, int threadNum)
 
 EventLoopThreadPool::~EventLoopThreadPool()
 {
-    // 删除每一个事件池线程实例，析构时同步启动任务线程
+    // 删除每一个事件池线程实例
     for (int i = 0; i < threadNum_; ++i)
     {
         delete eventLoopThreadList_[i];

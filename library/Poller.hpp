@@ -9,6 +9,7 @@
 #include <map>
 #include <sys/epoll.h>
 #include "Channel.hpp"
+#include "EventLoop.hpp"
 
 #define MAXEVENTNUM 4096 // 最大触发事件数量
 #define TIMEOUT 1000     // epoll_wait 超时时间设置
@@ -27,6 +28,7 @@ public:
     void RemoveChannel(Channel *pchannel);     // 移除事件，EPOLL_CTL_DEL
     void UpdateChannel(Channel *pchannel);     // 修改事件，EPOLL_CTL_MOD
     void poll(ChannelList &activeChannelList); // 获取一批次新事件
+
 };
 
 Poller::Poller()
@@ -35,16 +37,20 @@ Poller::Poller()
       channelMap_(),
       mutex_()
 {
-    pollFd_ = epoll_create(256); // 最大监听256个连接
+    LOG(LoggerLevel::INFO, "%s\n", "函数触发");
+    pollFd_ = epoll_create(1000); // 从Linux 2.6.8开始，max_size参数将被忽略，但必须大于零
     if (pollFd_ == -1)
     {
-        perror("epoll_create error");
+        LOG(LoggerLevel::ERROR, "创建epoll实例失败，pollFd: %d\n", pollFd_);
+        std::cout << "Poller::Poller 创建epoll实例失败，退出" << std::endl;
+        perror("创建epoll实例失败");
         exit(1);
     }
 }
 
 Poller::~Poller()
 {
+    LOG(LoggerLevel::INFO, "函数触发，pollFd: %d\n", pollFd_);
     close(pollFd_);
 }
 
@@ -54,7 +60,7 @@ Poller::~Poller()
  */
 void Poller::AddChannel(Channel *pchannel)
 {
-    std::cout << "输出测试：Poller::AddChannel " << std::endl;
+    LOG(LoggerLevel::INFO, "函数触发，pollFd: %d\n", pollFd_);
     struct epoll_event ev;
     ev.events = pchannel->GetEvents();
     ev.data.ptr = pchannel;
@@ -66,7 +72,9 @@ void Poller::AddChannel(Channel *pchannel)
     }
     if (epoll_ctl(pollFd_, EPOLL_CTL_ADD, fd, &ev) == -1)
     {
-        perror("epoll add error");
+        LOG(LoggerLevel::ERROR, "epoll添加监听Channel失败，pollFd: %d\n", pollFd_);
+        std::cout << "Poller::AddChannel epoll添加监听Channel失败，退出" << std::endl;
+        perror("epoll添加监听Channel失败");
         exit(1);
     }
 }
@@ -77,8 +85,10 @@ void Poller::AddChannel(Channel *pchannel)
  */
 void Poller::RemoveChannel(Channel *pchannel)
 {
-    std::cout << "输出测试：Poller::RemoveChannel " << std::endl;
+    LOG(LoggerLevel::INFO, "函数触发，pollFd: %d\n", pollFd_);
     int fd = pchannel->GetFd();
+    if(channelMap_.end() == channelMap_.find(fd))
+        return;
     struct epoll_event ev;
     ev.events = pchannel->GetEvents();
     // ev.data.fd = fd
@@ -91,7 +101,9 @@ void Poller::RemoveChannel(Channel *pchannel)
     if (epoll_ctl(pollFd_, EPOLL_CTL_DEL, fd, &ev) == -1)
     // if (epoll_ctl(pollFd_, EPOLL_CTL_DEL, fd, NULL) == -1)
     {
-        perror("epoll del error");
+        LOG(LoggerLevel::INFO, "epoll移除监听Channel失败，pollFd: %d\n", pollFd_);
+        std::cout << "Poller::RemoveChannel epoll移除监听Channel失败，退出" << std::endl;
+        perror("epoll移除监听Channel失败");
         exit(1);
     }
 }
@@ -102,7 +114,7 @@ void Poller::RemoveChannel(Channel *pchannel)
  */
 void Poller::UpdateChannel(Channel *pchannel)
 {
-    std::cout << "输出测试：Poller::UpdateChannel " << std::endl;
+    LOG(LoggerLevel::INFO, "函数触发，pollFd: %d\n", pollFd_);
     int fd = pchannel->GetFd();
     struct epoll_event ev;
     ev.events = pchannel->GetEvents();
@@ -110,18 +122,22 @@ void Poller::UpdateChannel(Channel *pchannel)
     ev.data.ptr = pchannel;
     if (epoll_ctl(pollFd_, EPOLL_CTL_MOD, fd, &ev) == -1)
     {
-        perror("epoll update error");
+        LOG(LoggerLevel::INFO, "epoll更新Channel监听事件失败，pollFd: %d\n", pollFd_);
+        std::cout << "Poller::UpdateChannel epoll更新Channel监听事件失败，退出" << std::endl;
+        perror("epoll更新Channel监听事件失败");
         exit(1);
     }
 }
 
 /*
- * 封装epoll_wait函数，获取一批次新任务
- * 由事件池获取新任务时调用
- *
+ * 封装epoll_wait函数，获取处于监听状态的已连接客户端的一批次新事件
+ * 由事件池一个常驻线程获取新任务时调用
+ * 将有连接事件的连接转为Channel结构存入activeChannelList指针内
+ * 
  */
 void Poller::poll(ChannelList &activeChannelList)
 {
+    // LOG(LoggerLevel::INFO, "函数触发，pollFd: %d\n", pollFd_);
     int timeout = TIMEOUT;
     // 监听一批次epoll网络请求
     int nfds = epoll_wait(pollFd_, &*eventList_.begin(), (int)eventList_.capacity(), timeout);
@@ -130,8 +146,10 @@ void Poller::poll(ChannelList &activeChannelList)
         perror("epoll wait error");
     }
     if (nfds)
-        std::cout << std::endl
-                  << "输出测试：Poller::poll Poller监听到" << nfds << "个已连接客户端的事件待处理" << std::endl;
+    {
+        // std::cout << std::endl << "Poller::poll Poller监听到" << nfds << "个已连接客户端的事件待处理" << std::endl;
+        LOG(LoggerLevel::INFO, "Poller监听到%d个已连接客户端的事件待处理，pollFd: %d\n", nfds, pollFd_);
+    }
     // 遍历获取每个网络请求事件
     for (int i = 0; i < nfds; ++i)
     {
@@ -146,19 +164,22 @@ void Poller::poll(ChannelList &activeChannelList)
         // 设置连接Channel实例新连接事件
         if (iter != channelMap_.end())
         {
-            std::cout << "输出测试：Poller::poll Poller已找到一个已连接事件的Channel实例，连接socketfd：" << fd << std::endl;
+            LOG(LoggerLevel::INFO, "epoll已匹配到一个有事件的已连接客户端Channel实例，该连接socketfd：%d，pollFd: %d\n", fd, pollFd_);
+            // std::cout << "Poller::poll epoll已匹配到一个有事件的已连接客户端Channel实例，该连接socketfd：" << fd << std::endl;
             pchannel->SetEvents(events);
             activeChannelList.push_back(pchannel);
         }
         else
         {
-            std::cout << "输出测试：Poller::poll Poller未找到该连接的Channel实例，连接socketfd：" << fd << std::endl;
+            LOG(LoggerLevel::ERROR, "epoll未找到有事件的连接的Channel实例，连接socketfd：%d，pollFd: %d\n", fd, pollFd_);
+            // std::cout << "Poller::poll epoll未找到有事件的连接的Channel实例，连接socketfd：" << fd << std::endl;
         }
     }
     // epoll事件列表满，翻倍扩大eventList_预分配容量
     if (nfds == (int)eventList_.capacity())
     {
-        std::cout << "Poller::poll 输出测试：epoll池容量满，容量翻倍" << nfds << std::endl;
+        LOG(LoggerLevel::INFO, "epoll池容量满，容量翻倍，pollFd: %d\n", pollFd_);
+        std::cout << "Poller::poll epoll池容量满，容量翻倍" << nfds << std::endl;
         eventList_.resize(nfds * 2);
     }
     eventList_.clear();

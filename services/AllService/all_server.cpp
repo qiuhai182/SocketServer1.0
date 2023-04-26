@@ -14,8 +14,8 @@ int main(int argc, char *argv[])
 
     // 默认初始化参数
     int port = 8000;          // 服务端口
-    int iothreadnum = 20;     // EventLoop工作线程数量
-    int workerthreadnum = 20; // 线程池工作线程数量
+    int iothreadnum = 5;     // EventLoop工作线程数量
+    int workerthreadnum = 5; // 线程池工作线程数量
     if (argc == 4)
     {
         // 启动初始化参数
@@ -24,10 +24,12 @@ int main(int argc, char *argv[])
         workerthreadnum = atoi(argv[3]); // 线程池工作线程数量，负责收到的请求数据进行逻辑处理
     }
 
-    EventLoop loop;                         // 多服务共享EventLoop
+    LOG_INIT(logPath.data());   // 初始化日志类单例
+
+    EventLoop loop; // 多服务共享EventLoop，该EventLoop是TcpServer的参数，其可以执行监听逻辑主函数
+    TcpServer tcpServer(&loop, port, iothreadnum); // 多服务共享基于EPOLL的TcpServer
     ThreadPool threadPool(workerthreadnum); // 多服务共享线程池
     threadPool.Start();
-    TcpServer tcpServer(&loop, port, iothreadnum); // 多服务共享基于EPOLL的TcpServer
 
     // 网站式HttpServer服务一般部署于80端口，此处HttpServer共享线程池threadPool，但独立创建一个监听80端口的TcpServer
     HttpServer httpServer(&loop, 0, &threadPool, iothreadnum, 80, nullptr); // NULL与nullptr相等

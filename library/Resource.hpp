@@ -8,8 +8,11 @@
 
 #include <string>
 
-// /resource目录相对位于SocketServer/service/XXService/out目录下的可执行文件server的访问路径
+// '/resource'目录相对位于'/SocketServer/service/XXService/out/'目录下的可执行文件server的相对访问路径
 const std::string dataRoot = "../../../resource/";
+
+// 日志目录
+const std::string logPath = "../../../logs/";
 
 // 网站资源根目录
 const std::string wwwRoot = dataRoot + "www/";

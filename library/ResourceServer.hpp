@@ -18,6 +18,7 @@
 #include "Resource.hpp"
 #include "TcpServer.hpp"
 #include "EventLoop.hpp"
+#include "LogServer.hpp"
 #include "ThreadPool.hpp"
 #include "TypeIdentify.hpp"
 #include "TcpConnection.hpp"
@@ -59,6 +60,7 @@ ResourceServer::ResourceServer(EventLoop *loop, const int workThreadNum, ThreadP
       tcpserver_(shareTcpServer ? shareTcpServer : new TcpServer(loop, tcpServerPort_, loopThreadNum))
 {
     // 基于TcpServer设置ResourceServer服务函数，在TcpServer内触发调用ResourceServer的成员函数，类似于信号槽机制
+    LOG(LoggerLevel::INFO, "%s\n", "函数触发");
     tcpserver_->RegisterHandler(serviceName_, TcpServer::ReadMessageHandler, std::bind(&ResourceServer::HandleMessage, this, std::placeholders::_1));
     tcpserver_->RegisterHandler(serviceName_, TcpServer::SendOverHandler, std::bind(&ResourceServer::HandleSendComplete, this, std::placeholders::_1));
     tcpserver_->RegisterHandler(serviceName_, TcpServer::CloseConnHandler, std::bind(&ResourceServer::HandleClose, this, std::placeholders::_1));
@@ -69,6 +71,7 @@ ResourceServer::ResourceServer(EventLoop *loop, const int workThreadNum, ThreadP
 
 ResourceServer::~ResourceServer()
 {
+    LOG(LoggerLevel::INFO, "%s\n", "函数触发");
     if(workThreadNum_)
     {
         delete threadpool_;
@@ -85,7 +88,7 @@ ResourceServer::~ResourceServer()
  */
 void ResourceServer::HandleMessage(spTcpConnection &sptcpconn)
 {
-    std::cout << "输出测试：ResourceServer::HandleMessage " << std::endl;
+    LOG(LoggerLevel::INFO, "%s\n", "函数触发");
     // 修改定时器参数
     sptcpconn->GetTimer()->Adjust(5000, Timer::TimerType::TIMER_ONCE, std::bind(&TcpConnection::Shutdown, sptcpconn));
     if (false == sptcpconn->GetReqHealthy())
@@ -121,7 +124,7 @@ void ResourceServer::HandleMessage(spTcpConnection &sptcpconn)
  */
 void ResourceServer::HttpError(spTcpConnection &sptcpconn, const std::string &short_msg)
 {
-    std::cout << "输出测试：ResourceServer::HttpError " << std::endl;
+    LOG(LoggerLevel::INFO, "%s\n", "函数触发");
     std::string &responsecontext = sptcpconn->GetBufferOut();
     responsecontext.clear();
     responsecontext += "HTTP/1.1 200 ok\r\n";
@@ -139,7 +142,7 @@ void ResourceServer::HttpError(spTcpConnection &sptcpconn, const std::string &sh
  */
 void ResourceServer::HandleSendComplete(spTcpConnection &sptcpconn)
 {
-    std::cout << "输出测试：ResourceServer::HandleSendComplete " << std::endl;
+    LOG(LoggerLevel::INFO, "%s\n", "函数触发");
 }
 
 /*
@@ -148,8 +151,7 @@ void ResourceServer::HandleSendComplete(spTcpConnection &sptcpconn)
  */
 void ResourceServer::HandleClose(spTcpConnection &sptcpconn)
 {
-    std::cout << "输出测试：ResourceServer::HandleClose " << std::endl;
-    ;
+    LOG(LoggerLevel::INFO, "%s\n", "函数触发");
 }
 
 /*
@@ -158,8 +160,7 @@ void ResourceServer::HandleClose(spTcpConnection &sptcpconn)
  */
 void ResourceServer::HandleError(spTcpConnection &sptcpconn)
 {
-    std::cout << "输出测试：ResourceServer::HandleError " << std::endl;
-    ;
+    LOG(LoggerLevel::INFO, "%s\n", "函数触发");
 }
 
 /*
@@ -168,6 +169,7 @@ void ResourceServer::HandleError(spTcpConnection &sptcpconn)
  */
 int ResourceServer::getFileSize(char* file_name)
 {
+    LOG(LoggerLevel::INFO, "%s\n", "函数触发");
 	FILE *fp=fopen(file_name,"r");
 	if(!fp)
 		return -1;
@@ -183,13 +185,14 @@ int ResourceServer::getFileSize(char* file_name)
  */
 void ResourceServer::SendResource(spTcpConnection &sptcpconn, const std::string &filePath)
 {    
-    std::cout << "输出测试：ResourceServer::SendResource " << std::endl;
+    LOG(LoggerLevel::INFO, "%s\n", "函数触发");
     std::string filetype = TypeIdentify::getContentTypeByPath(filePath);
     Json::Value resMsg;
     if(filetype.empty())
     {
         // 未知的资源类型
-        std::cout << "输出测试：ResourceServer::SendResource 未知的资源类型：" << filePath << " (" << filetype << ")" << std::endl;
+        LOG(LoggerLevel::ERROR, "未知的资源类型：%s（%s）\n", filePath, filetype);
+        std::cout << "ResourceServer::SendResource 未知的资源类型：" << filePath << " (" << filetype << ")" << std::endl;
         resMsg["resCode"] = 404;
         size_t npos = filePath.rfind('/');
         resMsg["aqlRes"] = "not found " + filePath.substr(npos + 1) + " ,unknown file-type";
@@ -246,7 +249,7 @@ void ResourceServer::SendResource(spTcpConnection &sptcpconn, const std::string 
     // responsecontext += "Content-Length: " + std::to_string(getFileSize(filePath.data())) + "\r\n\r\n";
     responsecontext += "Content-Length: " + std::to_string(responsebody.length()) + "\r\n\r\n";
     responsecontext.append(responsebody, 0, responsebody.length());
-    std::cout << "输出测试：ResourceServer::SendResource 即将发送文件：" << filePath << " 类型为：" << filetype << std::endl;
+    LOG(LoggerLevel::INFO, "即将发送文件:%s（%s）\n", filePath, filetype);
     sptcpconn->SendBufferOut();
 }
 
@@ -256,8 +259,9 @@ void ResourceServer::SendResource(spTcpConnection &sptcpconn, const std::string 
  */
 void ResourceServer::GetImageResource(spTcpConnection &sptcpconn)
 {
+    LOG(LoggerLevel::INFO, "%s\n", "函数触发");
+    LOG(LoggerLevel::INFO, "开始处理一个TcpConnection连接的Http请求，连接sockfd：%d\n", sptcpconn->fd());
     // 修改定时器参数
-    std::cout << "输出测试：ResourceServer::GetImageResource 开始处理一个TcpConnection连接的Http请求，连接sockfd：" << sptcpconn->fd() << std::endl;
     sptcpconn->GetTimer()->Adjust(5000, Timer::TimerType::TIMER_ONCE, std::bind(&TcpConnection::Shutdown, sptcpconn));
     Json::Reader reader;
     Json::Value jsonBody;
@@ -275,6 +279,3 @@ void ResourceServer::GetImageResource(spTcpConnection &sptcpconn)
         HttpError(sptcpconn, resMsg.toStyledString());
     }
 }
-
-
-

@@ -7,7 +7,8 @@
 //  事件池线程池属于TcpServer控管，不同于工作线程池
 //  事件池多线程时，子线程轮询提供EventLoop指针用于添加监听新连接
 //  只有一个时，主线程循环调用loop监听epoll直至结束
-//  多个线程时，子线程循环调用loop直至子线程结束，主线程虽也循环调用loop专用于监听TceServer的Channel
+//  多个线程时，子线程循环调用loop监听客户端连接直至子线程结束
+//  主线程循环调用loop专用于监听TceServer的Channel
 
 #pragma once
 
@@ -22,6 +23,7 @@
 #include <stdlib.h>
 #include "Poller.hpp"
 #include "Channel.hpp"
+#include "LogServer.hpp"
 
 class EventLoop
 {
@@ -48,6 +50,7 @@ private:
     Poller poller_;                    // epoll封装类实例
     bool quit_;                        // 停止循环监听事件标志位
     int wakeUpFd_;                     // 共享内存fd，用于唤醒线程
+    
 };
 
 /*
@@ -56,10 +59,13 @@ private:
  */
 int CreateEventFd()
 {
+    LOG(LoggerLevel::INFO, "%s\n", "函数触发");
     int evtFd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
     if (evtFd < 0)
     {
-        std::cout << "Failed in eventfd" << std::endl;
+        LOG(LoggerLevel::ERROR, "%s\n", "创建唤醒通信管道失败，退出");
+        std::cout << "EventLoop::EventLoop 创建唤醒通信管道失败，退出" << std::endl;
+        perror("创建唤醒通信管道失败");
         exit(1);
     }
     return evtFd;
@@ -74,11 +80,12 @@ EventLoop::EventLoop()
       mutex_(),
       wakeUpFd_(CreateEventFd())
 {
-    std::cout << "输出测试：EventLoop::EventLoop 创建一个EventLoop" << std::endl;
+    LOG(LoggerLevel::INFO, "%s\n", "函数触发");
 }
 
 EventLoop::~EventLoop()
 {
+    LOG(LoggerLevel::INFO, "%s\n", "函数触发");
     close(wakeUpFd_);
 }
 
@@ -88,7 +95,9 @@ EventLoop::~EventLoop()
  */
 void EventLoop::AddChannelToPoller(Channel *pchannel)
 {
-    std::cout << "输出测试：EventLoop::AddChannelToPoller 一个EventLoop添加连接监听，目标sockfd：" << pchannel->GetFd() << std::endl;
+    LOG(LoggerLevel::INFO, "%s\n", "函数触发");
+    LOG(LoggerLevel::INFO, "一个EventLoop添加连接监听，目标sockfd：%d\n", pchannel->GetFd());
+    // std::cout << "EventLoop::AddChannelToPoller 一个EventLoop添加连接监听，目标sockfd：" << pchannel->GetFd() << std::endl;
     // std::lock_guard<std::mutex> lock(mutex_);
     poller_.AddChannel(pchannel);
 }
@@ -99,7 +108,9 @@ void EventLoop::AddChannelToPoller(Channel *pchannel)
  */
 void EventLoop::RemoveChannelToPoller(Channel *pchannel)
 {
-    std::cout << "输出测试：EventLoop::RemoveChannelToPoller 一个EventLoop移除连接监听，目标sockfd：" << pchannel->GetFd() << std::endl;
+    LOG(LoggerLevel::INFO, "%s\n", "函数触发");
+    LOG(LoggerLevel::INFO, "一个EventLoop移除连接监听，目标sockfd：%d\n", pchannel->GetFd());
+    // std::cout << "EventLoop::RemoveChannelToPoller 一个EventLoop移除连接监听，目标sockfd：" << pchannel->GetFd() << std::endl;
     std::lock_guard<std::mutex> lock(mutex_);
     poller_.RemoveChannel(pchannel);
 }
@@ -110,7 +121,9 @@ void EventLoop::RemoveChannelToPoller(Channel *pchannel)
  */
 void EventLoop::UpdateChannelToPoller(Channel *pchannel)
 {
-    std::cout << "输出测试：EventLoop::UpdateChannelToPoller 一个EventLoop更新连接监听，目标sockfd：" << pchannel->GetFd() << std::endl;
+    LOG(LoggerLevel::INFO, "%s\n", "函数触发");
+    LOG(LoggerLevel::INFO, "一个EventLoop更新连接监听，目标sockfd：%d\n", pchannel->GetFd());
+    // std::cout << "EventLoop::UpdateChannelToPoller 一个EventLoop更新连接监听，目标sockfd：" << pchannel->GetFd() << std::endl;
     poller_.UpdateChannel(pchannel);
 }
 
@@ -120,6 +133,7 @@ void EventLoop::UpdateChannelToPoller(Channel *pchannel)
  */
 void EventLoop::Quit()
 {
+    LOG(LoggerLevel::INFO, "%s\n", "函数触发");
     quit_ = true;
 }
 
@@ -129,6 +143,7 @@ void EventLoop::Quit()
  */
 std::thread::id EventLoop::GetThreadId() const
 {
+    LOG(LoggerLevel::INFO, "%s\n", "函数触发");
     return tid_;
 }
 
@@ -138,7 +153,7 @@ std::thread::id EventLoop::GetThreadId() const
  */
 void EventLoop::AddTask(Functor functor)
 {
-    std::cout << "输出测试：EventLoop::AddTask 添加一个待执行函数到事件池等待执行" << std::endl;
+    LOG(LoggerLevel::INFO, "%s\n", "函数触发");
     {
         std::lock_guard<std::mutex> lock(mutex_);
         functorList_.push_back(functor);
@@ -153,7 +168,7 @@ void EventLoop::AddTask(Functor functor)
  */
 void EventLoop::WakeUp()
 {
-    std::cout << "输出测试：EventLoop::WakeUp " << std::endl;
+    LOG(LoggerLevel::INFO, "%s\n", "函数触发");
     uint64_t one = 1;
     std::lock_guard<std::mutex> lock(mutex_);
     ssize_t n = write(wakeUpFd_, (char *)(&one), sizeof one);
@@ -172,7 +187,7 @@ void EventLoop::WakeUp()
  */
 void EventLoop::ExecuteTask()
 {
-    std::cout << "输出测试：EventLoop::ExecuteTask " << std::endl;
+    LOG(LoggerLevel::INFO, "%s\n", "函数触发");
     // 拷贝任务列表并使任务列表置空
     std::vector<Functor> functorlists;
     {
@@ -180,17 +195,18 @@ void EventLoop::ExecuteTask()
         functorlists.swap(functorList_);
     }
     // 执行拷贝的所有任务
-    std::cout << "输出测试：EventLoop即将执行所在线程的IO任务，任务数量：" << functorlists.size() << std::endl;
+    LOG(LoggerLevel::INFO, "EventLoop即将执行所在线程的IO任务，任务数量：%d\n", functorlists.size());
+    // std::cout << "EventLoop::ExecuteTask EventLoop即将执行所在线程的IO任务，任务数量：" << functorlists.size() << std::endl;
     for (Functor &functor : functorlists)
     {
-        std::cout << "输出测试：EventLoop即将执行一个IO任务" << std::endl;
         try
         {
             functor();
         }
         catch (std::bad_function_call)
         {
-            std::cout << "输出测试：EventLoop执行一个IO任务报错：std::bad_function_call，函数调用失败" << std::endl;
+            LOG(LoggerLevel::ERROR, "%s\n", "执行一个IO任务报错：std::bad_function_call，函数调用失败");
+            std::cout << "EventLoop::ExecuteTask 执行一个IO任务报错：std::bad_function_call，函数调用失败" << std::endl;
         }
     }
     functorlists.clear();
@@ -205,13 +221,16 @@ void EventLoop::ExecuteTask()
  */
 void EventLoop::loop()
 {
+    LOG(LoggerLevel::INFO, "%s\n", "函数触发");
     quit_ = false;
+    LOG(LoggerLevel::INFO, "%s\n", "开始循环监听");
     while (!quit_)
     {
         poller_.poll(activeChannelList_);
         for (Channel *pchannel : activeChannelList_)
         {
-            std::cout << "输出测试：EventLoop::loop EventLoop处理新请求事件, 连接sockfd：" << pchannel->GetFd() << std::endl;
+            LOG(LoggerLevel::INFO, "EventLoop处理一个请求事件, 连接sockfd：%d\n", pchannel->GetFd());
+            // std::cout << "EventLoop::loop EventLoop处理一个请求事件, 连接sockfd：" << pchannel->GetFd() << std::endl;
             pchannel->HandleEvent();
         }
         activeChannelList_.clear();
@@ -220,5 +239,6 @@ void EventLoop::loop()
             ExecuteTask();
         }
     }
-    std::cout << "输出测试：EventLoop::loop 一个事件池EventLoop退出" << std::endl;
+    LOG(LoggerLevel::INFO, "%s\n", "一个事件池EventLoop退出");
+    // std::cout << "EventLoop::loop 一个事件池EventLoop退出" << std::endl;
 }

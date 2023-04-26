@@ -36,27 +36,28 @@ link_directories(../../library/out)
 # endif()
 
 
-# 在包含上下文的范围内加载源文件
-include(FindProtobuf)
-# 查找指定目录的proto文件编译生成的源文件和头文件，分别输出到变量PROTO_SRC和PROTO_HEADER
-protobuf_generate_cpp(PROTO_SRC PROTO_HEADER 
-                      ../../protobuf/account/account.proto
-                      ../../protobuf/common/common.proto
-                      ../../protobuf/echo/echo.proto
-                      ../../protobuf/fileupdown/fileupdown.proto
-                      ../../protobuf/service/service.proto
-                      ../../protobuf/character/character.proto
-                      ../../protobuf/relationship/relationship.proto
-                    )
+# # 在包含上下文的范围内加载源文件
+# include(FindProtobuf)
+# # 查找指定目录的proto文件编译生成的源文件和头文件，分别输出到变量PROTO_SRC和PROTO_HEADER
+# protobuf_generate_cpp(PROTO_SRC PROTO_HEADER 
+#                       ../../protobuf/account/account.proto
+#                       ../../protobuf/common/common.proto
+#                       ../../protobuf/echo/echo.proto
+#                       ../../protobuf/fileupdown/fileupdown.proto
+#                       ../../protobuf/service/service.proto
+#                       ../../protobuf/character/character.proto
+#                       ../../protobuf/relationship/relationship.proto
+#                     )
 
 SET(CMAKE_BUILD_TYPE "Debug")
 
 
 # add_executable(server all_server.cpp ${PROTO_HEADER} ${PROTO_SRC} ${SRC_DIRS_LIBRARY} ${SRC_DIRS_SERVICE} ${SRC_DIRS_LIBRARY_JSONCPP})
-add_executable(server all_server.cpp ${SRC_DIRS_LIBRARY} ${SRC_DIRS_SERVICE} ${SRC_DIRS_LIBRARY_JSONCPP})
+add_executable(server portproxy_server.cpp ${SRC_DIRS_LIBRARY} ${SRC_DIRS_SERVICE} ${SRC_DIRS_LIBRARY_JSONCPP})
 
 # target_link_libraries(server ${BRPC_LIB} ${PROTOBUF_LIBRARIES} lib_SocketServerLibrary.a mysqlclient hiredis pthread)
-target_link_libraries(server ${BRPC_LIB} ${PROTOBUF_LIBRARIES} mysqlclient pthread)
+# target_link_libraries(server ${BRPC_LIB} ${PROTOBUF_LIBRARIES} mysqlclient pthread)
+target_link_libraries(server ${BRPC_LIB} ${PROTOBUF_LIBRARIES} pthread)
 
 add_definitions(-w) # 忽略编译警告
 

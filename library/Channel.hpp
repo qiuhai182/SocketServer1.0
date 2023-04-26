@@ -11,7 +11,7 @@
 //  EPOLLRDHUP：表示对应的文件描述符读关闭；
 //  EPOLLHUP：  表示对应的文件描述符被挂断；
 //  EPOLLET：   将EPOLL设为边缘触发(Edge Triggered)模式，
-//              这是相对于水平触发(Level Triggered)来说的；
+//              这是相对于默认的水平触发(Level Triggered)模式来说的；
 //  EPOLLONESHOT：  只监听一次事件，当监听完这次事件之后，
 //                  如果还需要继续监听这个socket的话，
 //                  需要再次把这个socket加入到EPOLL队列里；
@@ -21,6 +21,7 @@
 #include <iostream>
 #include <functional>
 #include <sys/epoll.h>
+#include "LogServer.hpp"
 
 class Channel
 {
@@ -45,15 +46,18 @@ private:
     Callback writeHandler;  // 写数据回调函数
     Callback errorHandler_; // 错误处理回调函数
     Callback closeHandler_; // 关闭连接回调函数
+    
 };
 
 Channel::Channel()
     : fd_(-1)
 {
+    LOG(LoggerLevel::INFO, "函数触发，sockfd：%d\n", fd_);
 }
 
 Channel::~Channel()
 {
+    LOG(LoggerLevel::INFO, "函数触发，sockfd：%d\n", fd_);
 }
 
 /*
@@ -62,6 +66,7 @@ Channel::~Channel()
  */
 void Channel::SetFd(int fd)
 {
+    LOG(LoggerLevel::INFO, "函数触发，sockfd：%d\n", fd_);
     fd_ = fd;
 }
 
@@ -71,6 +76,7 @@ void Channel::SetFd(int fd)
  */
 int Channel::GetFd() const
 {
+    LOG(LoggerLevel::INFO, "函数触发，sockfd：%d\n", fd_);
     return fd_;
 }
 
@@ -80,6 +86,7 @@ int Channel::GetFd() const
  */
 void Channel::SetEvents(uint32_t events)
 {
+    LOG(LoggerLevel::INFO, "函数触发，sockfd：%d\n", fd_);
     events_ = events;
 }
 
@@ -89,6 +96,7 @@ void Channel::SetEvents(uint32_t events)
  */
 uint32_t Channel::GetEvents() const
 {
+    LOG(LoggerLevel::INFO, "函数触发，sockfd：%d\n", fd_);
     return events_;
 }
 
@@ -98,6 +106,7 @@ uint32_t Channel::GetEvents() const
  */
 void Channel::SetReadHandle(const Callback &cb)
 {
+    LOG(LoggerLevel::INFO, "函数触发，sockfd：%d\n", fd_);
     readHandler_ = cb;
 }
 
@@ -107,6 +116,7 @@ void Channel::SetReadHandle(const Callback &cb)
  */
 void Channel::SetWriteHandle(const Callback &cb)
 {
+    LOG(LoggerLevel::INFO, "函数触发，sockfd：%d\n", fd_);
     writeHandler = cb;
 }
 
@@ -116,6 +126,7 @@ void Channel::SetWriteHandle(const Callback &cb)
  */
 void Channel::SetErrorHandle(const Callback &cb)
 {
+    LOG(LoggerLevel::INFO, "函数触发，sockfd：%d\n", fd_);
     errorHandler_ = cb;
 }
 
@@ -125,6 +136,7 @@ void Channel::SetErrorHandle(const Callback &cb)
  */
 void Channel::SetCloseHandle(const Callback &cb)
 {
+    LOG(LoggerLevel::INFO, "函数触发，sockfd：%d\n", fd_);
     closeHandler_ = cb;
 }
 
@@ -134,29 +146,32 @@ void Channel::SetCloseHandle(const Callback &cb)
  */
 void Channel::HandleEvent()
 {
-    std::cout << "输出测试：Channel::HandleEvent 处理连接事件，sockfd：" << fd_ << std::endl;
+    LOG(LoggerLevel::INFO, "函数触发，sockfd：%d\n", fd_);
     if (events_ & EPOLLRDHUP)
     {
         // 客户端异常关闭事件
-        std::cout << "Event EPOLLRDHUP" << std::endl;
+        LOG(LoggerLevel::INFO, "客户端异常关闭（EPOLLRDHUP），sockfd：%d\n", fd_);
         closeHandler_();
     }
     else if (events_ & (EPOLLIN | EPOLLPRI))
     {
         // 读事件，客户端有数据或者正常关闭
-        std::cout << "输出测试：Channel::HandleEvent 读取客户端的请求数据，sockfd：" << fd_ << std::endl;
+        LOG(LoggerLevel::INFO, "客户端有数据可读或正常关闭（EPOLLIN | EPOLLPRI），sockfd：%d\n", fd_);
+        // std::cout << "Channel::HandleEvent 读取客户端的请求数据，sockfd：" << fd_ << std::endl;
         readHandler_();
     }
     else if (events_ & EPOLLOUT)
     {
         // 写事件，发送数据到客户端
-        std::cout << "输出测试：Channel::HandleEvent 客户端请求获取数据，sockfd：" << fd_ << std::endl;
+        LOG(LoggerLevel::INFO, "客户端请求获取数据（EPOLLOUT），sockfd：%d\n", fd_);
+        // std::cout << "Channel::HandleEvent 客户端请求获取数据，sockfd：" << fd_ << std::endl;
         writeHandler();
     }
     else
     {
         // 连接错误
-        std::cout << "输出测试：Channel::HandleEvent 连接错误，sockfd：" << fd_ << std::endl;
+        LOG(LoggerLevel::INFO, "客户端连接错误，sockfd：%d\n", fd_);
+        std::cout << "Channel::HandleEvent 连接错误，sockfd：" << fd_ << std::endl;
         errorHandler_();
     }
 }

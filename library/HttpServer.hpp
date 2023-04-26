@@ -55,6 +55,7 @@
 #include "Resource.hpp"
 #include "TcpServer.hpp"
 #include "EventLoop.hpp"
+#include "LogServer.hpp"
 #include "ThreadPool.hpp"
 #include "TypeIdentify.hpp"
 #include "TcpConnection.hpp"
@@ -68,9 +69,8 @@ public:
 private:
     typedef std::shared_ptr<TcpConnection> spTcpConnection;
     std::string serviceName_;
-    std::mutex mutex_;
-    int workThreadNum_;
-    int loopThreadNum_;
+    int workThreadNum_;     // 默认为0，若有值则自行管理创建销毁一个线程池
+    int loopThreadNum_;     // 默认为0，若有值则自行管理创建销毁一个TcpServerr对象，该对象也会自行管理eventLoopThreadPool线程池
     int tcpServerPort_;                           // tcpServer的EPOLL的服务端口
     TcpServer *tcpserver_;                        // 基础网络服务TcpServer
     ThreadPool *threadpool_;                      // 线程池
@@ -83,6 +83,7 @@ private:
     void HandleSendComplete(spTcpConnection &sptcpconn);                        // HttpServer模式数据处理发送客户端完毕
     void HandleClose(spTcpConnection &sptcpconn);                               // HttpServer模式处理连接断开
     void HandleError(spTcpConnection &sptcpconn);                               // HttpServer模式处理连接出错
+
 };
 
 HttpServer::HttpServer(EventLoop *loop, const int workThreadNum, ThreadPool *threadPool, const int loopThreadNum, const int port, TcpServer *shareTcpServer)
@@ -93,18 +94,20 @@ HttpServer::HttpServer(EventLoop *loop, const int workThreadNum, ThreadPool *thr
       threadpool_(threadPool ? threadPool : (workThreadNum_ > 0 ? new ThreadPool(workThreadNum_) : NULL)),
       tcpserver_(shareTcpServer ? shareTcpServer : new TcpServer(loop, tcpServerPort_, loopThreadNum))
 {
-    // 基于TcpServer设置HttpServer服务函数，在TcpServer内触发调用HttpServer的成员函数，类似于信号槽机制
+    // 基于TcpServer设置HttpServer服务函数，在TcpServer内注册HttpServer的成员函数等待Channel绑定
+    LOG(LoggerLevel::INFO, "%s\n", "函数触发");
     tcpserver_->RegisterHandler(serviceName_, TcpServer::ReadMessageHandler, std::bind(&HttpServer::HandleMessage, this, std::placeholders::_1));
     tcpserver_->RegisterHandler(serviceName_, TcpServer::SendOverHandler, std::bind(&HttpServer::HandleSendComplete, this, std::placeholders::_1));
     tcpserver_->RegisterHandler(serviceName_, TcpServer::CloseConnHandler, std::bind(&HttpServer::HandleClose, this, std::placeholders::_1));
     tcpserver_->RegisterHandler(serviceName_, TcpServer::ErrorConnHandler, std::bind(&HttpServer::HandleError, this, std::placeholders::_1));
-    tcpserver_->RegisterHandler(serviceName_, "HttpProcess", std::bind(&HttpServer::HttpProcess, this, std::placeholders::_1));
+    tcpserver_->RegisterHandler(serviceName_, TcpServer::HttpHandler, std::bind(&HttpServer::HttpProcess, this, std::placeholders::_1));
     if (tcpServerPort_)
         threadpool_->Start();
 }
 
 HttpServer::~HttpServer()
 {
+    LOG(LoggerLevel::INFO, "%s\n", "函数触发");
     if (workThreadNum_)
     {
         delete threadpool_;
@@ -121,7 +124,7 @@ HttpServer::~HttpServer()
  */
 void HttpServer::HandleMessage(spTcpConnection &sptcpconn)
 {
-    std::cout << "输出测试：HttpServer::HandleMessage " << std::endl;
+    LOG(LoggerLevel::INFO, "%s\n", "函数触发");
     // 修改定时器参数
     sptcpconn->GetTimer()->Adjust(5000, Timer::TimerType::TIMER_ONCE, std::bind(&TcpConnection::Shutdown, sptcpconn));
     sptcpconn->SetAsyncProcessing(false);
@@ -138,20 +141,21 @@ void HttpServer::HandleMessage(spTcpConnection &sptcpconn)
         threadpool_->AddTask([&]()
                              {
                                 // 执行动态绑定的处理函数
-                                std::cout << "工作线程执行sptcpconn的绑定函数，此时sptcpconn->IsDisconnected()："<< sptcpconn->IsDisconnected() << "，sockfd：" << sptcpconn->fd() << std::endl;
+                                LOG(LoggerLevel::INFO, "工作线程即将执行sptcpconn的绑定函数，此时sptcpconn->IsDisconnected()：%s，sockfd：%d\n", sptcpconn->IsDisconnected() ? "true" : "false", sptcpconn->fd());
                                 if(sptcpconn->IsDisconnected())
                                 {
-                                    std::cout << "工作线程执行sptcpconn的绑定函数，此时sptcpconn已关闭，不作处理，sockfd：" << sptcpconn->fd() << std::endl;
+                                    LOG(LoggerLevel::INFO, "工作线程即将执行sptcpconn的绑定函数，此时sptcpconn已关闭，不作处理，sockfd：%d\n", sptcpconn->fd());
                                 }
                                 else
                                 {
                                     try
                                     {
+                                        LOG(LoggerLevel::INFO, "%s\n", "工作线程执行sptcpconn的绑定函数");
                                         sptcpconn->GetReqHandler()(sptcpconn);
                                     }
                                     catch(std::bad_function_call)
                                     {
-                                        std::cout << "工作线程执行sptcpconn的绑定函数报错：std::bad_function_call，连接绑定函数异常，sockfd：" << sptcpconn->fd() << std::endl;
+                                        LOG(LoggerLevel::ERROR, "工作线程执行sptcpconn的绑定函数报错：std::bad_function_call，连接绑定函数异常，sockfd：%d\n", sptcpconn->fd());
                                         sptcpconn->SetAsyncProcessing(false);
                                     }
                                     sptcpconn->SetAsyncProcessing(false);
@@ -166,7 +170,7 @@ void HttpServer::HandleMessage(spTcpConnection &sptcpconn)
         }
         catch (std::bad_function_call)
         {
-            std::cout << "工作线程执行sptcpconn的绑定函数报错：std::bad_function_call，连接绑定函数异常，sockfd：" << sptcpconn->fd() << std::endl;
+            LOG(LoggerLevel::ERROR, "执行sptcpconn的绑定函数报错：std::bad_function_call，连接绑定函数异常，sockfd：%d\n", sptcpconn->fd());
         }
     }
 }
@@ -177,7 +181,7 @@ void HttpServer::HandleMessage(spTcpConnection &sptcpconn)
  */
 void HttpServer::HttpProcess(spTcpConnection &sptcpconn)
 {
-    std::cout << "输出测试：HttpServer::HttpProcess 开始处理一个TcpConnection连接的Http请求，连接sockfd：" << sptcpconn->fd() << std::endl;
+    LOG(LoggerLevel::INFO, "开始处理一个TcpConnection连接的Http请求，连接sockfd：%d\n", sptcpconn->fd());
     HttpRequestContext &httprequestcontext = sptcpconn->GetReqestBuffer();
     std::string &responsecontext = sptcpconn->GetBufferOut(); // 存储响应头+响应内容
     std::string responsebody;                                 // 暂存响应内容
@@ -264,13 +268,13 @@ void HttpServer::HttpProcess(spTcpConnection &sptcpconn)
  */
 void HttpServer::SendResource(spTcpConnection &sptcpconn, const std::string &filePath)
 {
-    std::cout << "输出测试：HttpServer::SendResource " << std::endl;
+    LOG(LoggerLevel::INFO, "%s\n", "函数触发");
     std::string filetype = TypeIdentify::getContentTypeByPath(filePath);
     HttpRequestContext &httprequestcontext = sptcpconn->GetReqestBuffer();
     if (filetype.empty())
     {
         // 未知的资源类型
-        std::cout << "输出测试：HttpServer::SendResource 未知的资源类型：" << filePath << " (" << filetype << ")" << std::endl;
+        LOG(LoggerLevel::ERROR, "未知的资源类型：%s(类型为：%s)\n", filePath, filetype);
         size_t npos = filePath.rfind('/');
         HttpError(sptcpconn, 404, "Not Found Resource : \"" + filePath.substr(npos + 1) + "\" ,unknown file-type");
         return;
@@ -281,7 +285,7 @@ void HttpServer::SendResource(spTcpConnection &sptcpconn, const std::string &fil
     if ((fp = fopen(filePath.c_str(), "rb")) == NULL)
     {
         // 未定位到资源文件
-        std::cout << "输出测试：HttpServer::SendResource 未寻到资源：" << filePath << std::endl;
+        LOG(LoggerLevel::INFO, "未寻到资源：%s\n", filePath);
         size_t npos = filePath.rfind('/');
         HttpError(sptcpconn, 404, "Not Found Resource : \"" + filePath.substr(npos + 1) + "\" ");
         return;
@@ -289,7 +293,6 @@ void HttpServer::SendResource(spTcpConnection &sptcpconn, const std::string &fil
     else
     {
         // 读取并发送请求的资源文件
-        std::cout << "输出测试：HttpServer::SendResource 读取资源：" << filePath << std::endl;
         std::fstream tmpfile;
         tmpfile.open(filePath.c_str(), std::ios::in | std::ios::binary | std::ios::ate); // 二进制输入(读取),定位到文件末尾
         if (tmpfile.is_open())
@@ -324,17 +327,18 @@ void HttpServer::SendResource(spTcpConnection &sptcpconn, const std::string &fil
     // responsecontext += "Content-Length: " + std::to_string(getFileSize(filePath.data())) + "\r\n\r\n";
     responsecontext += "Content-Length: " + std::to_string(responsebody.length()) + "\r\n\r\n";
     responsecontext.append(responsebody, 0, responsebody.length());
-    std::cout << "输出测试：HttpServer::SendResource 即将发送文件：" << filePath << " 类型为：" << filetype << std::endl;
+    LOG(LoggerLevel::INFO, "即将发送文件：%s，文件类型：%s\n", filePath, filetype);
     sptcpconn->SendBufferOut();
 }
 
 /*
  * 处理错误http请求，返回错误描述
+ * 该函数不同于HandleError，该函数不能被Channel调用
  *
  */
 void HttpServer::HttpError(spTcpConnection &sptcpconn, const int err_num, const std::string &short_msg)
 {
-    std::cout << "输出测试：HttpServer::HandleError " << std::endl;
+    LOG(LoggerLevel::INFO, "%s，sockfd：%d\n", "函数触发", sptcpconn->fd());
     std::string &responsecontext = sptcpconn->GetBufferOut();
     responsecontext.clear();
     std::string responsebody;
@@ -366,7 +370,7 @@ void HttpServer::HttpError(spTcpConnection &sptcpconn, const int err_num, const 
  */
 void HttpServer::HandleSendComplete(spTcpConnection &sptcpconn)
 {
-    std::cout << "输出测试：HttpServer::HandleSendComplete " << std::endl;
+    LOG(LoggerLevel::INFO, "%s\n", "函数触发");
 }
 
 /*
@@ -375,7 +379,7 @@ void HttpServer::HandleSendComplete(spTcpConnection &sptcpconn)
  */
 void HttpServer::HandleClose(spTcpConnection &sptcpconn)
 {
-    std::cout << "输出测试：HttpServer::HandleClose " << std::endl;
+    LOG(LoggerLevel::INFO, "%s\n", "函数触发");
 }
 
 /*
@@ -384,7 +388,7 @@ void HttpServer::HandleClose(spTcpConnection &sptcpconn)
  */
 void HttpServer::HandleError(spTcpConnection &sptcpconn)
 {
-    std::cout << "输出测试：HttpServer::HandleError " << std::endl;
+    LOG(LoggerLevel::INFO, "%s\n", "函数触发");
 }
 
 /*
